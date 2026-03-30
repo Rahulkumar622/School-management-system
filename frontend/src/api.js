@@ -10,12 +10,14 @@ const resolveBaseUrl = () => {
   if (typeof window !== "undefined") {
     const { hostname, origin } = window.location;
 
-    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-      return origin;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:5000";
     }
+
+    return origin;
   }
 
-  return "https://school-management-system-production-708f.up.railway.app";
+  return "";
 };
 
 const api = axios.create({

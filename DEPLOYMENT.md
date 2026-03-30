@@ -8,6 +8,21 @@ This repo is best deployed as one service:
 
 For this stack, Railway is the easier option because Railway can auto-detect the root `Dockerfile` and also provides a MySQL template. Render works too, but you must bring your own MySQL service or external MySQL database.
 
+## Vercel deployment note
+
+Vercel should not be used as a single combined deployment for this repo's frontend and backend together.
+
+- the root `vercel.json` is configured to deploy the React frontend build from `frontend/build`
+- the Express backend should be deployed separately on Railway, Render, or as a separate Vercel backend project rooted at `backend/`
+- if you deploy the frontend on Vercel, set `REACT_APP_API_URL` to your live backend URL during the frontend build
+- if you do not set `REACT_APP_API_URL`, the frontend will try the current site origin in production, which only works when frontend and backend are hosted on the same domain
+
+Why this matters:
+
+- Vercel serves the frontend as a static app
+- this repo's backend currently expects a Node server plus MySQL
+- the backend's `express.static()` behavior is not the right way to serve the frontend inside a Vercel frontend deployment
+
 ## Required environment variables
 
 Use these values on any platform:
