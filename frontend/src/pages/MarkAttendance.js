@@ -1,178 +1,133 @@
-// import { useState } from "react";
-// import axios from "axios";
-
-// function MarkAttendance() {
-
-//   const [studentId, setStudentId] = useState("");
-//   const [studentName, setStudentName] = useState("");   // ✅ Added
-//   const [subject, setSubject] = useState("");
-//   const [status, setStatus] = useState("");
-
-//   // ✅ Auto Fetch Student
-//   const fetchStudent = (id) => {
-//     if (!id) return;
-
-//     axios
-//       .get(`http://localhost:5000/student/${id}`)
-//       .then((res) => {
-//         setStudentName(res.data.name);
-//       })
-//       .catch((err) => console.log(err));
-//   };
-
-//   // ✅ Submit Attendance
-//   const handleSubmit = () => {
-//     const data = {
-//       student_id: studentId,
-//       subject: subject,
-//       date: new Date(),
-//       status: status
-//     };
-
-//     axios
-//       .post("http://localhost:5000/mark-attendance", data)
-//       .then(() => alert("Attendance Marked ✅"))
-//       .catch((err) => console.log(err));
-//   };
-
-//   return (
-//     <div style={{ padding: "20px" }}>
-//       <h2>Mark Attendance 📋</h2>
-
-//       {/* Student ID */}
-//       <input
-//         placeholder="Student ID"
-//         onChange={(e) => {
-//           setStudentId(e.target.value);
-//           fetchStudent(e.target.value);
-//         }}
-//       />
-
-//       <br /><br />
-
-//       {/* Auto Name */}
-//       <input
-//         value={studentName}
-//         placeholder="Student Name"
-//         readOnly
-//       />
-
-//       <br /><br />
-
-//       {/* Subject */}
-//       <input
-//         placeholder="Subject"
-//         onChange={(e) => setSubject(e.target.value)}
-//       />
-
-//       <br /><br />
-
-//       {/* Status */}
-//       <select onChange={(e) => setStatus(e.target.value)}>
-//         <option value="">Select Status</option>
-//         <option value="Present">Present</option>
-//         <option value="Absent">Absent</option>
-//       </select>
-
-//       <br /><br />
-
-//       <button onClick={handleSubmit}>
-//         Submit
-//       </button>
-//     </div>
-//   );
-// }
-
-// export default MarkAttendance;
-
-
-
 import { useState } from "react";
-import axios from "axios";
+
+import api from "../api";
+import "../styles/appShell.css";
 
 function MarkAttendance() {
-
+  const [studentInput, setStudentInput] = useState("");
   const [studentId, setStudentId] = useState("");
   const [studentName, setStudentName] = useState("");
   const [subject, setSubject] = useState("");
-  const [status, setStatus] = useState("");
+  const [statusValue, setStatusValue] = useState("");
+  const [status, setStatus] = useState({ type: "", message: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto Fetch Student Name
-  const fetchStudent = (id) => {
+  const fetchStudent = async (identifier) => {
+    if (!identifier.trim()) {
+      setStudentId("");
+      setStudentName("");
+      return;
+    }
 
-    if (!id) return;
-
-    axios
-      .get(`http://localhost:5000/student/${id}`)
-      .then((res) => {
-        setStudentName(res.data.name);
-      })
-      .catch((err) => console.log(err));
+    try {
+      const { data } = await api.get(`/student/${identifier}`);
+      setStudentId(String(data.student?.id || ""));
+      setStudentName(data.student?.name || "");
+      setStatus({ type: "", message: "" });
+    } catch (requestError) {
+      setStudentId("");
+      setStudentName("");
+      setStatus({
+        type: "error",
+        message: requestError.response?.data?.message || "Student not found.",
+      });
+    }
   };
 
-  // Submit Attendance
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!studentId || !studentName || !subject.trim() || !statusValue) {
+      setStatus({ type: "error", message: "Complete all attendance details first." });
+      return;
+    }
 
-    const data = {
-      student_id: studentId,
-      student_name: studentName,
-      subject: subject,
-      date: new Date(),
-      status: status
-    };
+    setIsSubmitting(true);
+    setStatus({ type: "", message: "" });
 
-    axios
-      .post("http://localhost:5000/mark-attendance", data)
-      .then(() => alert("Attendance Marked ✅"))
-      .catch((err) => console.log(err));
+    try {
+      const { data } = await api.post("/mark-attendance", {
+        student_id: studentId,
+        subject: subject.trim(),
+        date: new Date().toISOString().slice(0, 10),
+        status: statusValue,
+      });
+
+      setSubject("");
+      setStatusValue("");
+      setStatus({ type: "success", message: data.message });
+    } catch (requestError) {
+      setStatus({
+        type: "error",
+        message:
+          requestError.response?.data?.message || "Unable to mark attendance.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div style={{ padding: "20px" }}>
+    <div className="page-shell">
+      <div className="page-card">
+        <div className="page-header">
+          <div>
+            <h2>Mark Attendance</h2>
+            <p>Search the student by numeric ID or generated code and save attendance.</p>
+          </div>
+        </div>
 
-      <h2>Mark Attendance 📋</h2>
+        <div className="form-grid">
+          <div className="field-group">
+            <label htmlFor="attendance-student-id">Student ID / Code</label>
+            <input
+              id="attendance-student-id"
+              value={studentInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                setStudentInput(value);
+                fetchStudent(value);
+              }}
+            />
+          </div>
+          <div className="field-group">
+            <label htmlFor="attendance-resolved-id">Resolved Student ID</label>
+            <input id="attendance-resolved-id" value={studentId} readOnly />
+          </div>
+          <div className="field-group">
+            <label htmlFor="attendance-student-name">Student Name</label>
+            <input id="attendance-student-name" value={studentName} readOnly />
+          </div>
+          <div className="field-group">
+            <label htmlFor="attendance-subject">Subject</label>
+            <input
+              id="attendance-subject"
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+            />
+          </div>
+          <div className="field-group">
+            <label htmlFor="attendance-status">Status</label>
+            <select
+              id="attendance-status"
+              value={statusValue}
+              onChange={(event) => setStatusValue(event.target.value)}
+            >
+              <option value="">Select Status</option>
+              <option value="Present">Present</option>
+              <option value="Absent">Absent</option>
+            </select>
+          </div>
+        </div>
 
-      {/* Student ID */}
-      <input
-        placeholder="Student ID"
-        onChange={(e) => {
-          setStudentId(e.target.value);
-          fetchStudent(e.target.value);
-        }}
-      />
+        {status.message ? (
+          <p className={`status-message ${status.type}`}>{status.message}</p>
+        ) : null}
 
-      <br /><br />
-
-      {/* Auto Name */}
-      <input
-        value={studentName}
-        placeholder="Student Name"
-        readOnly
-      />
-
-      <br /><br />
-
-      {/* Subject */}
-      <input
-        placeholder="Subject"
-        onChange={(e) => setSubject(e.target.value)}
-      />
-
-      <br /><br />
-
-      {/* Status */}
-      <select onChange={(e) => setStatus(e.target.value)}>
-        <option value="">Select Status</option>
-        <option value="Present">Present</option>
-        <option value="Absent">Absent</option>
-      </select>
-
-      <br /><br />
-
-      <button onClick={handleSubmit}>
-        Submit
-      </button>
-
+        <div className="button-row">
+          <button className="primary-button" onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : "Submit Attendance"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import api from "../api";
-import { setTeacherSession } from "../session";
+import { setParentSession } from "../session";
 import "../styles/login.css";
 
-function TeacherLogin() {
+function ParentLogin() {
   const [schoolCode, setSchoolCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,7 +16,7 @@ function TeacherLogin() {
 
   const handleLogin = async () => {
     if (!schoolCode.trim() || !email.trim() || !password) {
-      setError("Enter school code, email and password.");
+      setError("Enter school code, parent email, and password.");
       return;
     }
 
@@ -24,20 +24,19 @@ function TeacherLogin() {
     setError("");
 
     try {
-      const { data } = await api.post("/teacher-login", {
+      const { data } = await api.post("/parent-login", {
         schoolCode: schoolCode.trim().toUpperCase(),
         email: email.trim(),
         password,
       });
 
-      setTeacherSession(data.teacher);
-
-      navigate("/teacher-dashboard", {
-        state: data.teacher,
+      setParentSession(data.parent);
+      navigate("/parent-dashboard", {
+        state: data.parent,
       });
     } catch (requestError) {
       setError(
-        requestError.response?.data?.message || "Unable to login right now."
+        requestError.response?.data?.message || "Unable to login to parent portal."
       );
     } finally {
       setIsSubmitting(false);
@@ -48,21 +47,21 @@ function TeacherLogin() {
     <div className="login-container">
       <div className="login-card">
         <div className="login-header">
-          <p className="login-eyebrow">Teacher Workspace</p>
-          <h2>Run classroom operations from one focused screen.</h2>
+          <p className="login-eyebrow">Parent Connect</p>
+          <h2>Stay close to admissions, academics, and fee updates.</h2>
           <p className="login-subtitle">
-            Mark attendance, update marks, and review fee-sensitive student context for your school.
+            Check linked children, application progress, performance, and fee snapshots from one parent portal.
           </p>
         </div>
 
         <div className="login-helper-grid">
           <div className="login-helper-card">
-            <strong>Classroom ready</strong>
-            <span>Attendance and marks flows stay connected to the same student records.</span>
+            <strong>Admissions visibility</strong>
+            <span>Track submitted forms and the current application status online.</span>
           </div>
           <div className="login-helper-card">
-            <strong>School filtered</strong>
-            <span>Every action stays limited to the campus linked with your account.</span>
+            <strong>Child overview</strong>
+            <span>Review attendance, performance, and fee details without calling the office.</span>
           </div>
         </div>
 
@@ -74,15 +73,13 @@ function TeacherLogin() {
             onChange={(event) => setSchoolCode(event.target.value)}
             autoComplete="organization"
           />
-
           <input
             type="email"
-            placeholder="Enter Email"
+            placeholder="Enter Parent Email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"
           />
-
           <input
             type="password"
             placeholder="Enter Password"
@@ -104,12 +101,12 @@ function TeacherLogin() {
         </div>
 
         <p className="login-note">
-          <strong>Tip</strong>
-          <span>Use the same credentials your school admin created for staff access.</span>
+          <strong>Need access?</strong>
+          <span>Use the parent account linked by the school admin to your child's student record.</span>
         </p>
       </div>
     </div>
   );
 }
 
-export default TeacherLogin;
+export default ParentLogin;

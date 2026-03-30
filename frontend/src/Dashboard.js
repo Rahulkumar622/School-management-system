@@ -1,65 +1,218 @@
-import React from "react";
-import { Link } from "react-router-dom";
+
+
+import React, { useEffect, useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
+
+import { Bar, Pie } from "react-chartjs-2";
+
+import {
+ Chart as ChartJS,
+ CategoryScale,
+ LinearScale,
+ BarElement,
+ ArcElement,
+ Title,
+ Tooltip,
+ Legend
+} from "chart.js";
+
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+import api from "./api";
+
+ChartJS.register(
+ CategoryScale,
+ LinearScale,
+ BarElement,
+ ArcElement,
+ Title,
+ Tooltip,
+ Legend
+);
 
 function Dashboard() {
-  return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
 
-      {/* Sidebar */}
-      <div style={{
-        width: "220px",
-        background: "#1e293b",
-        color: "white",
-        padding: "20px"
-      }}>
-        <h2>📘 School</h2>
-        <hr />
-        <p><Link to="/add-student" style={linkStyle}>➕ Add Student</Link></p>
-        <p><Link to="/view-students" style={linkStyle}>👨‍🎓 View Students</Link></p>
-        <p><Link to="/attendance-reports" style={linkStyle}>📅 Attendance</Link></p>
-        <p><Link to="/marks-reports" style={linkStyle}>📝 Marks</Link></p>
-      </div>
+ const location = useLocation();
+ const student = location.state;
 
-      {/* Main Content */}
-      <div style={{ flex: 1, padding: "40px", background: "#f1f5f9" }}>
-        <h1>Welcome Rahul 👋</h1>
+ const [attendance,setAttendance] = useState([]);
+ const [marks,setMarks] = useState([]);
 
-        <div style={{ display: "flex", gap: "20px", marginTop: "30px" }}>
+ const dashboardRef = useRef();
 
-          <div style={cardStyle}>
-            <h3>Total Students</h3>
-            <h1>👨‍🎓</h1>
-          </div>
+ useEffect(()=>{
 
-          <div style={cardStyle}>
-            <h3>Attendance</h3>
-            <h1>📅</h1>
-          </div>
+  if (!student?.id) {
+   return;
+  }
 
-          <div style={cardStyle}>
-            <h3>Marks Reports</h3>
-            <h1>📝</h1>
-          </div>
+  const loadDashboard = async () => {
+   try {
+    const [attendanceResponse, marksResponse] = await Promise.all([
+     api.get("/attendance"),
+     api.get("/marks")
+    ]);
 
-        </div>
-      </div>
+    const attendanceRows = (attendanceResponse.data.attendance || []).filter(
+     a=>a.student_id === student.id
+    );
 
-    </div>
-  );
+    const marksRows = (marksResponse.data.marks || []).filter(
+     m=>m.student_id === student.id
+    );
+
+    setAttendance(attendanceRows);
+    setMarks(marksRows);
+   } catch (error) {
+    console.error("Failed to load dashboard data", error);
+   }
+  };
+
+  loadDashboard();
+
+ },[student?.id])
+
+
+ // Attendance Chart
+
+ const present = attendance.filter(a=>a.status==="Present").length;
+ const absent = attendance.filter(a=>a.status==="Absent").length;
+
+ const attendanceChart = {
+
+ labels:["Present","Absent"],
+
+ datasets:[{
+ data:[present,absent],
+ backgroundColor:["green","red"]
+ }]
+
+ };
+
+
+ // Marks Chart
+
+ const marksChart = {
+
+ labels:marks.map(m=>m.subject),
+
+ datasets:[{
+ label:"Marks",
+ data:marks.map(m=>m.marks),
+ backgroundColor:"blue"
+ }]
+
+ };
+
+
+ // PDF Download
+
+ const downloadPDF = async ()=>{
+
+  const canvas = await html2canvas(dashboardRef.current);
+
+  const img = canvas.toDataURL("image/png");
+
+  const pdf = new jsPDF();
+
+  pdf.addImage(img,"PNG",10,10,180,0);
+
+  pdf.save("student-report.pdf");
+
+ };
+
+
+ return(
+
+ <div style={{
+ padding:"40px",
+ background:"#f1f5f9",
+ minHeight:"100vh"
+ }} ref={dashboardRef}>
+
+ <h1>Student Dashboard 🎓</h1>
+
+
+ {/* Profile */}
+
+ <div style={{
+ background:"white",
+ padding:"20px",
+ borderRadius:"10px",
+ boxShadow:"0 5px 10px rgba(0,0,0,0.1)",
+ marginBottom:"20px"
+ }}>
+
+ <h2>{student.name}</h2>
+
+ <p>Email: {student.email}</p>
+
+ <p>Class: {student.class}</p>
+
+ </div>
+
+
+ {/* Charts */}
+
+ <div style={{
+ display:"flex",
+ gap:"40px"
+ }}>
+
+ <div style={{
+ background:"white",
+ padding:"20px",
+ borderRadius:"10px",
+ width:"400px"
+ }}>
+
+ <h3>Attendance</h3>
+
+ <Pie data={attendanceChart}/>
+
+ </div>
+
+
+ <div style={{
+ background:"white",
+ padding:"20px",
+ borderRadius:"10px",
+ width:"400px"
+ }}>
+
+ <h3>Marks</h3>
+
+ <Bar data={marksChart}/>
+
+ </div>
+
+ </div>
+
+
+ <br/>
+
+ <button
+ onClick={downloadPDF}
+
+ style={{
+ padding:"12px 20px",
+ border:"none",
+ background:"#2563eb",
+ color:"white",
+ borderRadius:"6px",
+ cursor:"pointer"
+ }}
+
+ >
+
+ Download Report PDF
+
+ </button>
+
+ </div>
+
+ );
+
 }
-
-const linkStyle = {
-  color: "white",
-  textDecoration: "none"
-};
-
-const cardStyle = {
-  background: "white",
-  padding: "30px",
-  borderRadius: "10px",
-  boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
-  flex: 1,
-  textAlign: "center"
-};
 
 export default Dashboard;
