@@ -30,7 +30,10 @@ app.use(
     origin: resolveCorsOrigin,
   })
 );
+
+
 app.use(express.json());
+
 
 const query = (sql, params = []) =>
   new Promise((resolve, reject) => {
@@ -2400,9 +2403,10 @@ startServer().catch((error) => {
   process.exit(1);
 });
 
+/*
 
 
-// ye code mene likha hai
-app.get("/api/health", (req, res) => {
+
   res.json({ status: "OK", message: "Server is running 🚀" });
 });
+*/

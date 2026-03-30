@@ -31,6 +31,7 @@ Notes:
 - `CLIENT_URL` can contain one or more comma-separated frontend URLs.
 - Keep `DB_SSL=true` when your MySQL provider requires SSL.
 - If frontend and backend are deployed together on the same domain, `REACT_APP_API_URL` is not required.
+- The backend also supports `MYSQL_URL` or `DATABASE_URL` if your platform gives a full MySQL connection string.
 
 ## Railway deployment
 
@@ -61,11 +62,22 @@ Railway works cleanly when the repo, `Dockerfile`, and app code are all in the s
 In the web service variables, set:
 
 ```env
+MYSQL_URL=copy-from-your-railway-mysql-service-if-available
 DB_SSL=false
 DB_CONNECTION_LIMIT=10
 CLIENT_URL=https://your-app.up.railway.app
 ADMIN_EMAIL=admin@gmail.com
 ADMIN_PASSWORD=your-strong-password
+```
+
+If you do not want to use `MYSQL_URL`, set these instead by copying from the Railway MySQL service:
+
+```env
+DB_HOST=MYSQLHOST
+DB_PORT=MYSQLPORT
+DB_USER=MYSQLUSER
+DB_PASSWORD=MYSQLPASSWORD
+DB_NAME=MYSQLDATABASE
 ```
 
 Also configure a health check path:
