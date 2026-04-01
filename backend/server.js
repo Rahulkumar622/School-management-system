@@ -71,6 +71,8 @@ const normalizeEmail = (value) => normalizeIdentifier(value).toLowerCase();
 
 const normalizeStudentCode = (value) => normalizeIdentifier(value).toUpperCase();
 
+const normalizeClassName = (value) => normalizeIdentifier(value);
+
 const scryptAsync = (password, salt) =>
   new Promise((resolve, reject) => {
     crypto.scrypt(password, salt, 32, (error, derivedKey) => {
@@ -155,6 +157,8 @@ const toTeacherPayload = (teacher) => ({
   school_code: teacher.school_code,
   name: teacher.name,
   email: teacher.email,
+  assigned_class: teacher.assigned_class || "",
+  assigned_subject: teacher.assigned_subject || "",
 });
 
 const toAdminPayload = (admin) => ({
@@ -295,6 +299,104 @@ const applyPaymentToInstallments = async (studentId, schoolId, amount) => {
   }
 };
 
+const syncInstallmentsWithPaidAmount = async (studentId, schoolId, paidAmount) => {
+  const installments = await query(
+    `SELECT id, amount_due
+     FROM fee_installments
+     WHERE student_id = ? AND school_id = ?
+     ORDER BY due_date ASC, id ASC`,
+    [studentId, schoolId]
+  );
+
+  let remaining = normalizeCurrencyAmount(paidAmount);
+
+  for (const installment of installments) {
+    const amountDue = Number(installment.amount_due || 0);
+    const amountPaid = Math.min(amountDue, remaining);
+    const status = amountPaid <= 0 ? "pending" : amountPaid >= amountDue ? "paid" : "partial";
+
+    await query(
+      `UPDATE fee_installments
+       SET amount_paid = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND school_id = ?`,
+      [amountPaid, status, installment.id, schoolId]
+    );
+
+    remaining = Math.max(remaining - amountPaid, 0);
+  }
+};
+
+const deriveStudentFeeState = (annualFee, paidFee) => {
+  const normalizedAnnualFee = normalizeCurrencyAmount(annualFee);
+  const normalizedPaidFee = Math.min(normalizeCurrencyAmount(paidFee), normalizedAnnualFee);
+  const dueFee = Number(Math.max(normalizedAnnualFee - normalizedPaidFee, 0).toFixed(2));
+  const feeStatus =
+    dueFee === 0 ? "paid" : normalizedPaidFee > 0 ? "partial" : "unpaid";
+
+  return {
+    annual_fee: normalizedAnnualFee,
+    paid_fee: normalizedPaidFee,
+    due_fee: dueFee,
+    fee_status: feeStatus,
+  };
+};
+
+const ensureClassCatalogEntry = async (schoolId, schoolCode, className) => {
+  const normalizedClassName = normalizeClassName(className);
+
+  if (!schoolId || !normalizedClassName) {
+    return null;
+  }
+
+  const existingClasses = await query(
+    `SELECT id
+     FROM classes
+     WHERE school_id = ? AND class_name = ?
+     LIMIT 1`,
+    [schoolId, normalizedClassName]
+  );
+
+  if (existingClasses.length > 0) {
+    return existingClasses[0];
+  }
+
+  const result = await query(
+    `INSERT INTO classes (school_id, school_code, class_name)
+     VALUES (?, ?, ?)`,
+    [schoolId, normalizeStudentCode(schoolCode), normalizedClassName]
+  );
+
+  return {
+    id: result.insertId,
+  };
+};
+
+const backfillClassCatalog = async () => {
+  const classRows = await query(
+    `SELECT DISTINCT school_id, school_code, class_name
+     FROM (
+       SELECT students.school_id AS school_id, schools.code AS school_code, students.class AS class_name
+       FROM students
+       JOIN schools ON schools.id = students.school_id
+       WHERE students.school_id IS NOT NULL AND TRIM(COALESCE(students.class, '')) <> ''
+       UNION
+       SELECT admissions.school_id AS school_id, COALESCE(NULLIF(admissions.school_code, ''), schools.code) AS school_code, admissions.class_name AS class_name
+       FROM admissions
+       JOIN schools ON schools.id = admissions.school_id
+       WHERE admissions.school_id IS NOT NULL AND TRIM(COALESCE(admissions.class_name, '')) <> ''
+       UNION
+       SELECT teachers.school_id AS school_id, schools.code AS school_code, teachers.assigned_class AS class_name
+       FROM teachers
+       JOIN schools ON schools.id = teachers.school_id
+       WHERE teachers.school_id IS NOT NULL AND TRIM(COALESCE(teachers.assigned_class, '')) <> ''
+     ) class_catalog`
+  );
+
+  for (const classRow of classRows) {
+    await ensureClassCatalogEntry(classRow.school_id, classRow.school_code, classRow.class_name);
+  }
+};
+
 const loadStudentFeeSnapshot = async (studentId) => {
   const students = await query(
     `SELECT id, school_id, name, annual_fee, paid_fee, due_fee, fee_status
@@ -387,6 +489,17 @@ const bootstrapDatabase = async () => {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS classes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      school_id INT NOT NULL,
+      school_code VARCHAR(50) NOT NULL,
+      class_name VARCHAR(50) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_school_class (school_id, class_name)
+    )
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS admin_users (
       id INT AUTO_INCREMENT PRIMARY KEY,
       school_id INT NULL,
@@ -474,6 +587,16 @@ const bootstrapDatabase = async () => {
   `);
 
   await ensureColumn("teachers", "school_id", "INT NULL");
+  await ensureColumn("teachers", "assigned_class", "VARCHAR(50) NOT NULL DEFAULT ''");
+  await ensureColumn("teachers", "assigned_subject", "VARCHAR(100) NOT NULL DEFAULT ''");
+  await ensureColumn("admissions", "school_code", "VARCHAR(50) NOT NULL DEFAULT ''");
+
+  await query(`
+    UPDATE admissions
+    JOIN schools ON schools.id = admissions.school_id
+    SET admissions.school_code = schools.code
+    WHERE TRIM(COALESCE(admissions.school_code, '')) = ''
+  `);
 
   await ensureColumn("attendance", "school_id", "INT NULL");
   await ensureColumn("marks", "school_id", "INT NULL");
@@ -506,6 +629,8 @@ const bootstrapDatabase = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await backfillClassCatalog();
 };
 
 const getSchools = () =>
@@ -541,6 +666,21 @@ const getSchoolById = async (schoolId) => {
 const getSchoolByCode = async (schoolCode) => {
   const schools = await query("SELECT * FROM schools WHERE code = ? LIMIT 1", [schoolCode]);
   return schools[0] || null;
+};
+
+const resolveSchoolFromPayload = async (payload = {}) => {
+  const schoolId = payload.school_id || payload.schoolId || null;
+  const schoolCode = normalizeStudentCode(payload.schoolCode || payload.school_code);
+
+  if (schoolId) {
+    return getSchoolById(schoolId);
+  }
+
+  if (schoolCode) {
+    return getSchoolByCode(schoolCode);
+  }
+
+  return null;
 };
 
 const isSchoolSubscriptionActive = (school) => {
@@ -628,7 +768,8 @@ const buildSchoolFilter = (schoolId, alias = "") => {
   };
 };
 
-const findStudentByIdentifier = async (identifier) => {
+const findStudentByIdentifier = async (identifier, schoolCode = "") => {
+  const normalizedSchoolCode = normalizeStudentCode(schoolCode);
   const students = await query(
     `SELECT
        students.id,
@@ -644,13 +785,18 @@ const findStudentByIdentifier = async (identifier) => {
        students.paid_fee,
        students.due_fee,
        students.fee_status,
+       parents.name AS parent_name,
+       parents.email AS parent_email,
+       parents.phone AS parent_phone,
        schools.name AS school_name,
        schools.code AS school_code
      FROM students
+     LEFT JOIN parents ON parents.id = students.parent_id
      LEFT JOIN schools ON schools.id = students.school_id
-     WHERE students.id = ? OR students.student_code = ?
+     WHERE (students.id = ? OR students.student_code = ?)
+       AND (? = '' OR schools.code = ?)
      LIMIT 1`,
-    [identifier, String(identifier).trim().toUpperCase()]
+    [identifier, String(identifier).trim().toUpperCase(), normalizedSchoolCode, normalizedSchoolCode]
   );
 
   return students[0] || null;
@@ -909,7 +1055,9 @@ app.delete(
 app.post(
   "/admin-login",
   asyncHandler(async (req, res) => {
-    const { role = "super_admin", schoolCode = "", email, password } = req.body;
+    const requestedRole = String(req.body.role || "super_admin").trim().toLowerCase();
+    const role = requestedRole === "principal" ? "school_admin" : requestedRole;
+    const { schoolCode = "", email, password } = req.body;
     const missingFields = requireFields(req.body, ["email", "password"]);
 
     if (missingFields.length > 0) {
@@ -1120,7 +1268,7 @@ app.get(
       return;
     }
 
-    const [studentCounts, teacherCounts, feeSummary, admissionCounts] = await Promise.all([
+    const [studentCounts, teacherCounts, feeSummary, admissionCounts, classCounts] = await Promise.all([
       query("SELECT COUNT(*) AS total FROM students WHERE school_id = ?", [school.id]),
       query("SELECT COUNT(*) AS total FROM teachers WHERE school_id = ?", [school.id]),
       query(
@@ -1129,12 +1277,14 @@ app.get(
           COALESCE(SUM(paid_fee), 0) AS paid_fee,
           COALESCE(SUM(due_fee), 0) AS due_fee,
           SUM(CASE WHEN fee_status = 'paid' THEN 1 ELSE 0 END) AS paid_students,
+          SUM(CASE WHEN fee_status = 'partial' THEN 1 ELSE 0 END) AS partial_students,
           SUM(CASE WHEN fee_status <> 'paid' THEN 1 ELSE 0 END) AS unpaid_students
         FROM students
         WHERE school_id = ?`,
         [school.id]
       ),
       query("SELECT COUNT(*) AS total FROM admissions WHERE school_id = ?", [school.id]),
+      query("SELECT COUNT(*) AS total FROM classes WHERE school_id = ?", [school.id]),
     ]);
 
     res.json({
@@ -1143,11 +1293,13 @@ app.get(
       stats: {
         students: Number(studentCounts[0]?.total || 0),
         teachers: Number(teacherCounts[0]?.total || 0),
+        classes: Number(classCounts[0]?.total || 0),
         admissions: Number(admissionCounts[0]?.total || 0),
         annual_fee: Number(feeSummary[0]?.annual_fee || 0),
         paid_fee: Number(feeSummary[0]?.paid_fee || 0),
         due_fee: Number(feeSummary[0]?.due_fee || 0),
         paid_students: Number(feeSummary[0]?.paid_students || 0),
+        partial_students: Number(feeSummary[0]?.partial_students || 0),
         unpaid_students: Number(feeSummary[0]?.unpaid_students || 0),
       },
     });
@@ -1215,6 +1367,7 @@ app.post(
     }
 
     const studentCode = await generateStudentCode(school);
+    await ensureClassCatalogEntry(school.id, school.code, className);
 
     const insertResult = await query(
       `INSERT INTO students
@@ -1249,7 +1402,6 @@ app.post(
   "/add-teacher",
   asyncHandler(async (req, res) => {
     const missingFields = requireFields(req.body, [
-      "school_id",
       "name",
       "email",
       "password",
@@ -1263,8 +1415,18 @@ app.post(
       return;
     }
 
-    const { school_id, name, email, password } = req.body;
-    const school = await getSchoolById(school_id);
+    if (!req.body.school_id && !normalizeStudentCode(req.body.schoolCode || req.body.school_code)) {
+      res.status(400).json({
+        success: false,
+        message: "school_id or schoolCode is required",
+      });
+      return;
+    }
+
+    const { name, email, password } = req.body;
+    const assignedClass = normalizeClassName(req.body.assigned_class);
+    const assignedSubject = normalizeIdentifier(req.body.assigned_subject);
+    const school = await resolveSchoolFromPayload(req.body);
 
     if (!school) {
       res.status(404).json({
@@ -1274,14 +1436,301 @@ app.post(
       return;
     }
 
+    const existingTeacher = await query(
+      `SELECT id
+       FROM teachers
+       WHERE school_id = ? AND LOWER(TRIM(email)) = ?
+       LIMIT 1`,
+      [school.id, normalizeEmail(email)]
+    );
+
+    if (existingTeacher.length > 0) {
+      res.status(409).json({
+        success: false,
+        message: "A teacher with this email already exists in the selected school",
+      });
+      return;
+    }
+
+    if (assignedClass) {
+      await ensureClassCatalogEntry(school.id, school.code, assignedClass);
+    }
+
     await query(
-      "INSERT INTO teachers (school_id, name, email, password) VALUES (?, ?, ?, ?)",
-      [school.id, name.trim(), email.trim(), await hashPassword(password)]
+      `INSERT INTO teachers (school_id, name, email, password, assigned_class, assigned_subject)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        school.id,
+        name.trim(),
+        email.trim(),
+        await hashPassword(password),
+        assignedClass,
+        assignedSubject,
+      ]
     );
 
     res.status(201).json({
       success: true,
       message: "Teacher added successfully",
+    });
+  })
+);
+
+app.get(
+  "/teachers",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          teachers: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const schoolFilter = buildSchoolFilter(schoolId, "teachers");
+    const teachers = await query(
+      `SELECT
+         teachers.id,
+         teachers.school_id,
+         teachers.name,
+         teachers.email,
+         teachers.assigned_class,
+         teachers.assigned_subject,
+         schools.name AS school_name,
+         schools.code AS school_code
+       FROM teachers
+       LEFT JOIN schools ON schools.id = teachers.school_id
+       ${schoolFilter.clause}
+       ORDER BY teachers.name ASC, teachers.id DESC`,
+      schoolFilter.params
+    );
+
+    res.json({
+      success: true,
+      teachers: teachers.map(toTeacherPayload),
+    });
+  })
+);
+
+app.patch(
+  "/teachers/:id",
+  asyncHandler(async (req, res) => {
+    const teachers = await query(
+      `SELECT
+         teachers.id,
+         teachers.school_id,
+         teachers.name,
+         teachers.email,
+         teachers.password,
+         teachers.assigned_class,
+         teachers.assigned_subject,
+         schools.name AS school_name,
+         schools.code AS school_code
+       FROM teachers
+       LEFT JOIN schools ON schools.id = teachers.school_id
+       WHERE teachers.id = ?
+       LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (teachers.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Teacher not found",
+      });
+      return;
+    }
+
+    const teacher = teachers[0];
+    const nextName = normalizeIdentifier(req.body.name || teacher.name);
+    const nextEmail = normalizeIdentifier(req.body.email || teacher.email);
+    const nextAssignedClass = normalizeClassName(
+      req.body.assigned_class !== undefined ? req.body.assigned_class : teacher.assigned_class
+    );
+    const nextAssignedSubject = normalizeIdentifier(
+      req.body.assigned_subject !== undefined ? req.body.assigned_subject : teacher.assigned_subject
+    );
+
+    if (!nextName || !nextEmail) {
+      res.status(400).json({
+        success: false,
+        message: "Teacher name and email are required",
+      });
+      return;
+    }
+
+    const existingTeacher = await query(
+      `SELECT id
+       FROM teachers
+       WHERE school_id = ? AND LOWER(TRIM(email)) = ? AND id <> ?
+       LIMIT 1`,
+      [teacher.school_id, normalizeEmail(nextEmail), teacher.id]
+    );
+
+    if (existingTeacher.length > 0) {
+      res.status(409).json({
+        success: false,
+        message: "Another teacher with this email already exists in the selected school",
+      });
+      return;
+    }
+
+    if (nextAssignedClass) {
+      await ensureClassCatalogEntry(teacher.school_id, teacher.school_code, nextAssignedClass);
+    }
+
+    const nextPassword = req.body.password
+      ? await hashPassword(req.body.password)
+      : teacher.password;
+
+    await query(
+      `UPDATE teachers
+       SET name = ?, email = ?, password = ?, assigned_class = ?, assigned_subject = ?
+       WHERE id = ?`,
+      [nextName, nextEmail, nextPassword, nextAssignedClass, nextAssignedSubject, teacher.id]
+    );
+
+    const updatedTeachers = await query(
+      `SELECT
+         teachers.id,
+         teachers.school_id,
+         teachers.name,
+         teachers.email,
+         teachers.assigned_class,
+         teachers.assigned_subject,
+         schools.name AS school_name,
+         schools.code AS school_code
+       FROM teachers
+       LEFT JOIN schools ON schools.id = teachers.school_id
+       WHERE teachers.id = ?
+       LIMIT 1`,
+      [teacher.id]
+    );
+
+    res.json({
+      success: true,
+      message: "Teacher updated successfully",
+      teacher: toTeacherPayload(updatedTeachers[0]),
+    });
+  })
+);
+
+app.get(
+  "/classes",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          classes: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const schoolFilter = buildSchoolFilter(schoolId, "classes");
+    const classes = await query(
+      `SELECT
+         classes.id,
+         classes.school_id,
+         classes.school_code,
+         classes.class_name,
+         schools.name AS school_name
+       FROM classes
+       LEFT JOIN schools ON schools.id = classes.school_id
+       ${schoolFilter.clause}
+       ORDER BY CAST(classes.class_name AS UNSIGNED) ASC, classes.class_name ASC, classes.id ASC`,
+      schoolFilter.params
+    );
+
+    res.json({
+      success: true,
+      classes,
+    });
+  })
+);
+
+app.post(
+  "/classes",
+  asyncHandler(async (req, res) => {
+    const school = await resolveSchoolFromPayload(req.body);
+    const className = normalizeClassName(req.body.class_name);
+
+    if (!school) {
+      res.status(404).json({
+        success: false,
+        message: "School not found",
+      });
+      return;
+    }
+
+    if (!className) {
+      res.status(400).json({
+        success: false,
+        message: "Class name is required",
+      });
+      return;
+    }
+
+    await ensureClassCatalogEntry(school.id, school.code, className);
+
+    const classes = await query(
+      `SELECT id, school_id, school_code, class_name
+       FROM classes
+       WHERE school_id = ?
+       ORDER BY CAST(class_name AS UNSIGNED) ASC, class_name ASC, id ASC`,
+      [school.id]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Class created successfully",
+      classes,
+    });
+  })
+);
+
+app.post(
+  "/classes/bootstrap",
+  asyncHandler(async (req, res) => {
+    const school = await resolveSchoolFromPayload(req.body);
+
+    if (!school) {
+      res.status(404).json({
+        success: false,
+        message: "School not found",
+      });
+      return;
+    }
+
+    for (let classNumber = 1; classNumber <= 12; classNumber += 1) {
+      await ensureClassCatalogEntry(school.id, school.code, String(classNumber));
+    }
+
+    const classes = await query(
+      `SELECT id, school_id, school_code, class_name
+       FROM classes
+       WHERE school_id = ?
+       ORDER BY CAST(class_name AS UNSIGNED) ASC, class_name ASC, id ASC`,
+      [school.id]
+    );
+
+    res.json({
+      success: true,
+      message: "Classes 1 to 12 are ready for this school",
+      classes,
     });
   })
 );
@@ -1473,7 +1922,6 @@ app.post(
   "/admissions",
   asyncHandler(async (req, res) => {
     const missingFields = requireFields(req.body, [
-      "school_id",
       "student_name",
       "class_name",
       "parent_name",
@@ -1490,7 +1938,15 @@ app.post(
       return;
     }
 
-    const school = await getSchoolById(req.body.school_id);
+    if (!req.body.school_id && !normalizeStudentCode(req.body.schoolCode || req.body.school_code)) {
+      res.status(400).json({
+        success: false,
+        message: "school_id or schoolCode is required",
+      });
+      return;
+    }
+
+    const school = await resolveSchoolFromPayload(req.body);
     if (!school) {
       res.status(404).json({
         success: false,
@@ -1525,10 +1981,11 @@ app.post(
     const referenceNumber = `ADM-${school.code}-${Date.now()}`;
     await query(
       `INSERT INTO admissions
-        (school_id, parent_id, student_name, class_name, previous_school, status, reference_number, notes)
-       VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?)`,
+        (school_id, school_code, parent_id, student_name, class_name, previous_school, status, reference_number, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'submitted', ?, ?)`,
       [
         school.id,
+        school.code,
         parentId,
         req.body.student_name.trim(),
         req.body.class_name.trim(),
@@ -1537,6 +1994,8 @@ app.post(
         (req.body.notes || "").trim(),
       ]
     );
+
+    await ensureClassCatalogEntry(school.id, school.code, req.body.class_name);
 
     res.status(201).json({
       success: true,
@@ -1549,10 +2008,45 @@ app.post(
 app.get(
   "/admissions",
   asyncHandler(async (req, res) => {
-    const schoolFilter = buildSchoolFilter(req.query.schoolId, "admissions");
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          admissions: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const params = [];
+    const conditions = [];
+
+    if (schoolId) {
+      conditions.push("admissions.school_id = ?");
+      params.push(schoolId);
+    }
+
+    if (req.query.className && normalizeClassName(req.query.className)) {
+      conditions.push("admissions.class_name = ?");
+      params.push(normalizeClassName(req.query.className));
+    }
+
+    if (req.query.status && normalizeIdentifier(req.query.status)) {
+      conditions.push("admissions.status = ?");
+      params.push(normalizeIdentifier(req.query.status));
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const admissions = await query(
       `SELECT
          admissions.id,
+         admissions.school_id,
+         COALESCE(NULLIF(admissions.school_code, ''), schools.code) AS school_code,
          admissions.student_name,
          admissions.class_name,
          admissions.previous_school,
@@ -1560,14 +2054,15 @@ app.get(
          admissions.reference_number,
          admissions.created_at,
          parents.name AS parent_name,
+         parents.email AS parent_email,
          parents.phone AS parent_phone,
          schools.name AS school_name
        FROM admissions
        LEFT JOIN parents ON parents.id = admissions.parent_id
        LEFT JOIN schools ON schools.id = admissions.school_id
-       ${schoolFilter.clause}
+       ${whereClause}
        ORDER BY admissions.id DESC`,
-      schoolFilter.params
+      params
     );
 
     res.json({
@@ -1873,7 +2368,7 @@ app.get(
 app.get(
   "/student/:id",
   asyncHandler(async (req, res) => {
-    const student = await findStudentByIdentifier(req.params.id);
+    const student = await findStudentByIdentifier(req.params.id, req.query.schoolCode);
 
     if (!student) {
       res.status(404).json({
@@ -1893,7 +2388,46 @@ app.get(
 app.get(
   "/students",
   asyncHandler(async (req, res) => {
-    const schoolFilter = buildSchoolFilter(req.query.schoolId, "students");
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+
+      if (!school) {
+        res.json({
+          success: true,
+          students: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const conditions = [];
+    const params = [];
+
+    if (schoolId) {
+      conditions.push("students.school_id = ?");
+      params.push(schoolId);
+    }
+
+    if (req.query.className && normalizeClassName(req.query.className)) {
+      conditions.push("students.class = ?");
+      params.push(normalizeClassName(req.query.className));
+    }
+
+    if (req.query.studentCode && normalizeStudentCode(req.query.studentCode)) {
+      conditions.push("students.student_code = ?");
+      params.push(normalizeStudentCode(req.query.studentCode));
+    }
+
+    if (req.query.feeStatus && normalizeIdentifier(req.query.feeStatus)) {
+      conditions.push("students.fee_status = ?");
+      params.push(normalizeIdentifier(req.query.feeStatus));
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const students = await query(
       `SELECT
          students.id,
@@ -1917,9 +2451,9 @@ app.get(
        FROM students
        LEFT JOIN parents ON parents.id = students.parent_id
        LEFT JOIN schools ON schools.id = students.school_id
-       ${schoolFilter.clause}
+       ${whereClause}
        ORDER BY students.id DESC`,
-      schoolFilter.params
+      params
     );
 
     res.json({
@@ -2172,7 +2706,17 @@ app.get(
 app.get(
   "/student-fee/:id",
   asyncHandler(async (req, res) => {
-    const snapshot = await loadStudentFeeSnapshot(req.params.id);
+    const student = await findStudentByIdentifier(req.params.id, req.query.schoolCode);
+
+    if (!student) {
+      res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+      return;
+    }
+
+    const snapshot = await loadStudentFeeSnapshot(student.id);
 
     if (!snapshot) {
       res.status(404).json({
@@ -2187,7 +2731,7 @@ app.get(
        FROM fee_payments
        WHERE student_id = ?
        ORDER BY paid_at DESC, id DESC`,
-      [req.params.id]
+      [student.id]
     );
 
     res.json({
@@ -2195,6 +2739,102 @@ app.get(
       fee: snapshot.fee,
       installments: snapshot.installments,
       payments,
+    });
+  })
+);
+
+app.patch(
+  "/students/:id/fee-status",
+  asyncHandler(async (req, res) => {
+    const nextStatus = String(req.body.fee_status || "").trim().toLowerCase();
+
+    if (!["paid", "unpaid", "partial"].includes(nextStatus)) {
+      res.status(400).json({
+        success: false,
+        message: "fee_status must be paid, unpaid, or partial",
+      });
+      return;
+    }
+
+    const student = await findStudentByIdentifier(
+      req.params.id,
+      req.body.schoolCode || req.query.schoolCode
+    );
+
+    if (!student) {
+      res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+      return;
+    }
+
+    const annualFee = Number(student.annual_fee || 0);
+    let nextPaidFee = Number(student.paid_fee || 0);
+
+    if (nextStatus === "paid") {
+      nextPaidFee = annualFee;
+    } else if (nextStatus === "unpaid") {
+      nextPaidFee = 0;
+    } else {
+      nextPaidFee = normalizeCurrencyAmount(req.body.paid_fee);
+
+      if (nextPaidFee <= 0 || nextPaidFee >= annualFee) {
+        res.status(400).json({
+          success: false,
+          message: "For partial status, paid_fee must be greater than 0 and less than annual fee",
+        });
+        return;
+      }
+    }
+
+    const feeState = deriveStudentFeeState(annualFee, nextPaidFee);
+
+    await query(
+      `UPDATE students
+       SET paid_fee = ?, due_fee = ?, fee_status = ?
+       WHERE id = ?`,
+      [feeState.paid_fee, feeState.due_fee, feeState.fee_status, student.id]
+    );
+
+    await syncInstallmentsWithPaidAmount(student.id, student.school_id, feeState.paid_fee);
+
+    const updatedStudents = await query(
+      `SELECT
+         students.id,
+         students.school_id,
+         students.parent_id,
+         students.student_code,
+         students.name,
+         students.class,
+         students.section,
+         students.roll_no,
+         students.email,
+         students.annual_fee,
+         students.paid_fee,
+         students.due_fee,
+         students.fee_status,
+         parents.name AS parent_name,
+         parents.email AS parent_email,
+         parents.phone AS parent_phone,
+         schools.name AS school_name,
+         schools.code AS school_code
+       FROM students
+       LEFT JOIN parents ON parents.id = students.parent_id
+       LEFT JOIN schools ON schools.id = students.school_id
+       WHERE students.id = ?
+       LIMIT 1`,
+      [student.id]
+    );
+
+    const snapshot = await loadStudentFeeSnapshot(student.id);
+
+    res.json({
+      success: true,
+      message: "Payment status updated successfully",
+      student: toStudentPayload(updatedStudents[0]),
+      fee: snapshot?.fee || null,
+      installments: snapshot?.installments || [],
     });
   })
 );
@@ -2412,7 +3052,23 @@ app.post(
 app.get(
   "/payments",
   asyncHandler(async (req, res) => {
-    const schoolFilter = buildSchoolFilter(req.query.schoolId, "fee_payments");
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+
+      if (!school) {
+        res.json({
+          success: true,
+          payments: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const schoolFilter = buildSchoolFilter(schoolId, "fee_payments");
     const payments = await query(
       `SELECT
          fee_payments.id,
@@ -2435,6 +3091,72 @@ app.get(
     res.json({
       success: true,
       payments,
+    });
+  })
+);
+
+app.get(
+  "/payments/class-summary",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+
+      if (!school) {
+        res.json({
+          success: true,
+          classes: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const params = [];
+    const conditions = [];
+
+    if (schoolId) {
+      conditions.push("students.school_id = ?");
+      params.push(schoolId);
+    }
+
+    if (req.query.className && normalizeClassName(req.query.className)) {
+      conditions.push("students.class = ?");
+      params.push(normalizeClassName(req.query.className));
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const summaries = await query(
+      `SELECT
+         students.class AS class_name,
+         COUNT(*) AS total_students,
+         SUM(CASE WHEN students.fee_status = 'paid' THEN 1 ELSE 0 END) AS paid_students,
+         SUM(CASE WHEN students.fee_status = 'partial' THEN 1 ELSE 0 END) AS partial_students,
+         SUM(CASE WHEN students.fee_status = 'unpaid' THEN 1 ELSE 0 END) AS unpaid_students,
+         COALESCE(SUM(students.annual_fee), 0) AS annual_fee,
+         COALESCE(SUM(students.paid_fee), 0) AS paid_fee,
+         COALESCE(SUM(students.due_fee), 0) AS due_fee
+       FROM students
+       ${whereClause}
+       GROUP BY students.class
+       ORDER BY CAST(students.class AS UNSIGNED) ASC, students.class ASC`,
+      params
+    );
+
+    res.json({
+      success: true,
+      classes: summaries.map((summary) => ({
+        ...summary,
+        total_students: Number(summary.total_students || 0),
+        paid_students: Number(summary.paid_students || 0),
+        partial_students: Number(summary.partial_students || 0),
+        unpaid_students: Number(summary.unpaid_students || 0),
+        annual_fee: Number(summary.annual_fee || 0),
+        paid_fee: Number(summary.paid_fee || 0),
+        due_fee: Number(summary.due_fee || 0),
+      })),
     });
   })
 );

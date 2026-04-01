@@ -9,6 +9,8 @@ const initialForm = {
   name: "",
   email: "",
   password: "",
+  assigned_class: "",
+  assigned_subject: "",
 };
 
 const createInitialForm = (schoolId = "") => ({
@@ -24,6 +26,7 @@ function AddTeacher() {
       : "";
   const [form, setForm] = useState(() => createInitialForm(lockedSchoolId));
   const [schools, setSchools] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -51,6 +54,29 @@ function AddTeacher() {
     loadSchools();
   }, [lockedSchoolId]);
 
+  useEffect(() => {
+    const loadClasses = async () => {
+      if (!form.school_id) {
+        setClasses([]);
+        return;
+      }
+
+      try {
+        const { data } = await api.get("/classes", {
+          params: { schoolId: form.school_id },
+        });
+        setClasses(data.classes || []);
+      } catch (requestError) {
+        setStatus({
+          type: "error",
+          message: requestError.response?.data?.message || "Unable to load classes.",
+        });
+      }
+    };
+
+    loadClasses();
+  }, [form.school_id]);
+
   const updateField = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
   };
@@ -68,6 +94,7 @@ function AddTeacher() {
       const { data } = await api.post("/add-teacher", {
         ...form,
         email: form.email.trim(),
+        assigned_subject: form.assigned_subject.trim(),
       });
 
       setForm(createInitialForm(lockedSchoolId));
@@ -129,6 +156,31 @@ function AddTeacher() {
               type="password"
               value={form.password}
               onChange={updateField("password")}
+            />
+          </div>
+          <div className="field-group">
+            <label htmlFor="teacher-class">Assigned Class</label>
+            <select
+              id="teacher-class"
+              value={form.assigned_class}
+              onChange={updateField("assigned_class")}
+              disabled={!form.school_id}
+            >
+              <option value="">Select Class</option>
+              {classes.map((classItem) => (
+                <option key={classItem.id} value={classItem.class_name}>
+                  Class {classItem.class_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field-group">
+            <label htmlFor="teacher-subject">Assigned Subject</label>
+            <input
+              id="teacher-subject"
+              value={form.assigned_subject}
+              onChange={updateField("assigned_subject")}
+              placeholder="Example: Mathematics"
             />
           </div>
         </div>

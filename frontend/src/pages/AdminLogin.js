@@ -6,7 +6,7 @@ import { setAdminSession } from "../session";
 import "../styles/login.css";
 
 function AdminLogin() {
-  const [role, setRole] = useState("super_admin");
+  const [role, setRole] = useState("school_admin");
   const [schoolCode, setSchoolCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -60,15 +60,15 @@ function AdminLogin() {
             <span>Review client schools, billing status, and overall platform activity.</span>
           </div>
           <div className="login-helper-card">
-            <strong>School admin mode</strong>
-            <span>Manage students, teachers, reports, and admissions for one campus.</span>
+            <strong>Principal / admin mode</strong>
+            <span>Manage students, teachers, classes, payments, reports, and admissions for one campus.</span>
           </div>
         </div>
 
         <div className="login-form">
           <select value={role} onChange={(event) => setRole(event.target.value)}>
+            <option value="school_admin">Principal / School Admin</option>
             <option value="super_admin">Software Owner</option>
-            <option value="school_admin">School Admin</option>
           </select>
 
           {role === "school_admin" ? (
@@ -111,7 +111,7 @@ function AdminLogin() {
 
         <p className="login-note">
           <strong>Access note</strong>
-          <span>School admin login needs the school code. Software owner login does not.</span>
+          <span>Principal / school admin login needs school code, email, and password. Software owner login does not.</span>
         </p>
       </div>
     </div>

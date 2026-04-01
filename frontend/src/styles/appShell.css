@@ -60,6 +60,10 @@ body {
   overflow: hidden;
 }
 
+.workspace-card {
+  max-width: 1380px;
+}
+
 .page-card::before {
   content: "";
   position: absolute;
@@ -707,6 +711,98 @@ body {
   line-height: 1.6;
 }
 
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.workspace-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.92));
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  box-shadow: var(--shadow-md);
+}
+
+.workspace-sidebar-top {
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-sidebar-top h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: -0.03em;
+}
+
+.workspace-nav {
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-nav-button {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(203, 213, 225, 0.76);
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--text-main);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.workspace-nav-button:hover {
+  border-color: rgba(15, 118, 110, 0.28);
+  transform: translateY(-1px);
+}
+
+.workspace-nav-button--active {
+  color: #ffffff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.22);
+}
+
+.workspace-sidebar-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-main {
+  min-width: 0;
+}
+
+.workspace-header {
+  margin-bottom: 0;
+}
+
+.compact-action-grid {
+  grid-template-columns: 1fr;
+}
+
+.compact-card {
+  min-height: auto;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.grow-field {
+  flex: 1 1 260px;
+}
+
 .stat-card--tone-primary {
   background:
     radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 30%),
@@ -830,5 +926,13 @@ body {
   .highlight-grid,
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-sidebar {
+    position: static;
   }
 }

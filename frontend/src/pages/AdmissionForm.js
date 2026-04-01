@@ -5,6 +5,7 @@ import "../styles/appShell.css";
 
 const initialForm = {
   school_id: "",
+  schoolCode: "",
   student_name: "",
   class_name: "",
   previous_school: "",
@@ -18,6 +19,7 @@ const initialForm = {
 function AdmissionForm() {
   const [form, setForm] = useState(initialForm);
   const [schools, setSchools] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [status, setStatus] = useState({ type: "", message: "" });
   const [referenceNumber, setReferenceNumber] = useState("");
 
@@ -37,8 +39,44 @@ function AdmissionForm() {
     loadSchools();
   }, []);
 
+  useEffect(() => {
+    const loadClasses = async () => {
+      if (!form.schoolCode) {
+        setClasses([]);
+        return;
+      }
+
+      try {
+        const { data } = await api.get("/classes", {
+          params: { schoolCode: form.schoolCode },
+        });
+        setClasses(data.classes || []);
+      } catch (requestError) {
+        setStatus({
+          type: "error",
+          message: requestError.response?.data?.message || "Unable to load classes.",
+        });
+      }
+    };
+
+    loadClasses();
+  }, [form.schoolCode]);
+
   const updateField = (field) => (event) => {
-    setForm((current) => ({ ...current, [field]: event.target.value }));
+    const value = event.target.value;
+
+    if (field === "school_id") {
+      const selectedSchool = schools.find((school) => String(school.id) === String(value));
+      setForm((current) => ({
+        ...current,
+        school_id: value,
+        schoolCode: selectedSchool?.code || "",
+        class_name: "",
+      }));
+      return;
+    }
+
+    setForm((current) => ({ ...current, [field]: value }));
   };
 
   const submitAdmission = async () => {
@@ -83,7 +121,28 @@ function AdmissionForm() {
           </div>
           <div className="field-group">
             <label htmlFor="admission-class-name">Applying Class</label>
-            <input id="admission-class-name" value={form.class_name} onChange={updateField("class_name")} />
+            {classes.length ? (
+              <select
+                id="admission-class-name"
+                value={form.class_name}
+                onChange={updateField("class_name")}
+                disabled={!form.school_id}
+              >
+                <option value="">Select Class</option>
+                {classes.map((classItem) => (
+                  <option key={classItem.id} value={classItem.class_name}>
+                    Class {classItem.class_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="admission-class-name"
+                value={form.class_name}
+                onChange={updateField("class_name")}
+                placeholder="Enter class"
+              />
+            )}
           </div>
           <div className="field-group">
             <label htmlFor="admission-previous-school">Previous School</label>

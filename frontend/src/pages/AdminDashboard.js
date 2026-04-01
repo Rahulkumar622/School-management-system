@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import api from "../api";
 import { clearAdminSession, getAdminSession } from "../session";
+import SchoolAdminWorkspace from "./SchoolAdminWorkspace";
 import "../styles/appShell.css";
 
 const formatCurrency = (value) => `Rs. ${Number(value || 0).toFixed(2)}`;
@@ -194,6 +195,17 @@ function AdminDashboard() {
 
     return "warning";
   })();
+
+  if (isSchoolAdmin) {
+    return (
+      <SchoolAdminWorkspace
+        admin={admin}
+        stats={stats}
+        error={error}
+        isLoading={isLoading}
+      />
+    );
+  }
 
   return (
     <div className="page-shell">
