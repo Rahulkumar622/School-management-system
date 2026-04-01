@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import api from "../api";
@@ -149,30 +149,30 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
     },
   ];
 
-  const loadWorkspaceStats = async () => {
+  const loadWorkspaceStats = useCallback(async () => {
     if (!schoolId) {
       return;
     }
 
     const { data } = await api.get(`/schools/${schoolId}/dashboard`);
     setWorkspaceStats(data.stats || null);
-  };
+  }, [schoolId]);
 
-  const loadClasses = async () => {
+  const loadClasses = useCallback(async () => {
     const { data } = await api.get("/classes", {
       params: { schoolCode },
     });
     setClasses(data.classes || []);
-  };
+  }, [schoolCode]);
 
-  const loadTeachers = async () => {
+  const loadTeachers = useCallback(async () => {
     const { data } = await api.get("/teachers", {
       params: { schoolCode },
     });
     setTeachers(data.teachers || []);
-  };
+  }, [schoolCode]);
 
-  const loadAdmissions = async (filters = admissionFilter) => {
+  const loadAdmissions = useCallback(async (filters = {}) => {
     const params = {
       schoolCode,
       ...(filters.className ? { className: filters.className } : {}),
@@ -180,9 +180,9 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
     };
     const { data } = await api.get("/admissions", { params });
     setAdmissions(data.admissions || []);
-  };
+  }, [schoolCode]);
 
-  const loadClassSummaries = async (className = classPaymentFilter) => {
+  const loadClassSummaries = useCallback(async (className = "") => {
     const params = {
       schoolCode,
       ...(className ? { className } : {}),
@@ -200,9 +200,9 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
     const [summaryResponse, studentsResponse] = await Promise.all(requests);
     setClassSummaries(summaryResponse.data.classes || []);
     setClassPaymentStudents(studentsResponse?.data?.students || []);
-  };
+  }, [schoolCode]);
 
-  const fetchStudentBundle = async (studentCode) => {
+  const fetchStudentBundle = useCallback(async (studentCode) => {
     const normalizedCode = String(studentCode || "").trim().toUpperCase();
 
     if (!normalizedCode) {
@@ -224,7 +224,7 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
       installments: feeResponse.data.installments || [],
       payments: feeResponse.data.payments || [],
     };
-  };
+  }, [schoolCode]);
 
   useEffect(() => {
     setWorkspaceStats(stats || null);
@@ -233,13 +233,7 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
   useEffect(() => {
     const loadWorkspaceData = async () => {
       try {
-        await Promise.all([
-          loadWorkspaceStats(),
-          loadClasses(),
-          loadTeachers(),
-          loadAdmissions(),
-          loadClassSummaries(),
-        ]);
+        await Promise.all([loadWorkspaceStats(), loadClasses(), loadTeachers()]);
       } catch (requestError) {
         const message =
           requestError.response?.data?.message || "Unable to load the principal workspace.";
@@ -250,7 +244,7 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
     if (schoolCode) {
       loadWorkspaceData();
     }
-  }, [schoolCode]);
+  }, [schoolCode, loadClasses, loadTeachers, loadWorkspaceStats]);
 
   useEffect(() => {
     if (!schoolCode) {
@@ -271,7 +265,7 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
     };
 
     syncAdmissions();
-  }, [schoolCode, admissionFilter.className, admissionFilter.status]);
+  }, [schoolCode, admissionFilter, loadAdmissions]);
 
   useEffect(() => {
     if (!schoolCode) {
@@ -296,7 +290,7 @@ function SchoolAdminWorkspace({ admin, stats, error, isLoading }) {
     };
 
     syncClassSummary();
-  }, [schoolCode, classPaymentFilter]);
+  }, [schoolCode, classPaymentFilter, loadClassSummaries]);
 
   const resetTeacherForm = () => {
     setTeacherForm(createTeacherForm());
