@@ -8,7 +8,7 @@ import logo from "./images/logo.jpg";
 
 function StudentLogin() {
   const [schoolCode, setSchoolCode] = useState("");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -16,8 +16,8 @@ function StudentLogin() {
   const navigate = useNavigate();
 
   const handleLogin = async () => {
-    if (!schoolCode.trim() || !email.trim() || !password) {
-      setError("Enter school code, email and password.");
+    if (!schoolCode.trim() || !identifier.trim() || !password) {
+      setError("Enter school code, email or student code, and password.");
       return;
     }
 
@@ -27,7 +27,7 @@ function StudentLogin() {
     try {
       const { data } = await api.post("/student-login", {
         schoolCode: schoolCode.trim().toUpperCase(),
-        email: email.trim(),
+        identifier: identifier.trim(),
         password,
       });
 
@@ -68,7 +68,11 @@ function StudentLogin() {
         </div>
 
         <div className="login-form">
+          <label className="login-field-label" htmlFor="student-school-code">
+            School Code
+          </label>
           <input
+            id="student-school-code"
             type="text"
             placeholder="Enter School Code"
             value={schoolCode}
@@ -76,15 +80,23 @@ function StudentLogin() {
             autoComplete="organization"
           />
 
+          <label className="login-field-label" htmlFor="student-identifier">
+            Email or Student Code
+          </label>
           <input
-            type="email"
-            placeholder="Enter Email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            id="student-identifier"
+            type="text"
+            placeholder="Enter Email or Student Code"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
             autoComplete="username"
           />
 
+          <label className="login-field-label" htmlFor="student-password">
+            Password
+          </label>
           <input
+            id="student-password"
             type="password"
             placeholder="Enter Password"
             value={password}
@@ -106,7 +118,8 @@ function StudentLogin() {
 
         <p className="login-note">
           <strong>Need help?</strong>
-          <span>Use the email and password issued by your school office or admin.</span>
+          <span>Field order: first school code, then email or student code, then password.</span>
+          <span>Use the email or generated student code shared by your school office or admin.</span>
         </p>
       </div>
     </div>

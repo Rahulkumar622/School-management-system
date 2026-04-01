@@ -65,6 +65,12 @@ const requireFields = (body, fields) =>
     return value === undefined || value === null || String(value).trim() === "";
   });
 
+const normalizeIdentifier = (value) => String(value || "").trim();
+
+const normalizeEmail = (value) => normalizeIdentifier(value).toLowerCase();
+
+const normalizeStudentCode = (value) => normalizeIdentifier(value).toUpperCase();
+
 const scryptAsync = (password, salt) =>
   new Promise((resolve, reject) => {
     crypto.scrypt(password, salt, 32, (error, derivedKey) => {
@@ -650,6 +656,51 @@ const findStudentByIdentifier = async (identifier) => {
   return students[0] || null;
 };
 
+const findStudentLoginCandidates = async (schoolCode, identifier) => {
+  const normalizedEmail = normalizeEmail(identifier);
+  const normalizedStudentCode = normalizeStudentCode(identifier);
+
+  return query(
+    `SELECT
+       students.*,
+       parents.name AS parent_name,
+       parents.email AS parent_email,
+       parents.phone AS parent_phone,
+       schools.name AS school_name,
+       schools.code AS school_code,
+       schools.plan_name,
+       schools.subscription_status,
+       schools.subscription_end_date
+     FROM students
+     JOIN schools ON schools.id = students.school_id
+     LEFT JOIN parents ON parents.id = students.parent_id
+     WHERE schools.code = ?
+       AND (
+         LOWER(TRIM(students.email)) = ?
+         OR UPPER(TRIM(students.student_code)) = ?
+       )
+     ORDER BY students.id DESC`,
+    [normalizeStudentCode(schoolCode), normalizedEmail, normalizedStudentCode]
+  );
+};
+
+const findLegacyStudentLoginCandidates = async (identifier) => {
+  const normalizedEmail = normalizeEmail(identifier);
+  const normalizedStudentCode = normalizeStudentCode(identifier);
+
+  return query(
+    `SELECT id, student_code, name, email, password
+     FROM students
+     WHERE school_id IS NULL
+       AND (
+         LOWER(TRIM(email)) = ?
+         OR UPPER(TRIM(student_code)) = ?
+       )
+     ORDER BY id DESC`,
+    [normalizedEmail, normalizedStudentCode]
+  );
+};
+
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
@@ -1147,6 +1198,22 @@ app.post(
     }
 
     const annualFee = Number(annual_fee);
+    const existingStudent = await query(
+      `SELECT id
+       FROM students
+       WHERE school_id = ? AND LOWER(TRIM(email)) = ?
+       LIMIT 1`,
+      [school.id, normalizeEmail(email)]
+    );
+
+    if (existingStudent.length > 0) {
+      res.status(409).json({
+        success: false,
+        message: "A student with this email already exists in the selected school",
+      });
+      return;
+    }
+
     const studentCode = await generateStudentCode(school);
 
     const insertResult = await query(
@@ -1222,54 +1289,74 @@ app.post(
 app.post(
   "/student-login",
   asyncHandler(async (req, res) => {
-    const missingFields = requireFields(req.body, ["schoolCode", "email", "password"]);
+    const schoolCode = normalizeStudentCode(req.body.schoolCode);
+    const identifier = normalizeIdentifier(req.body.identifier || req.body.email);
+    const password = req.body.password;
 
-    if (missingFields.length > 0) {
+    if (!schoolCode || !identifier || !String(password || "").trim()) {
       res.status(400).json({
         success: false,
-        message: "School code, email and password are required",
+        message: "School code, email or student code, and password are required",
       });
       return;
     }
 
-    const { schoolCode, email, password } = req.body;
-    const students = await query(
-      `SELECT
-         students.*,
-         schools.name AS school_name,
-         schools.code AS school_code,
-         schools.plan_name,
-         schools.subscription_status,
-         schools.subscription_end_date
-       FROM students
-       JOIN schools ON schools.id = students.school_id
-       WHERE schools.code = ? AND students.email = ?
-       LIMIT 1`,
-      [schoolCode.trim().toUpperCase(), email.trim()]
-    );
+    const students = await findStudentLoginCandidates(schoolCode, identifier);
+    const matchingStudents = [];
 
-    if (students.length === 0 || !(await verifyPassword(students[0].password, password))) {
+    for (const student of students) {
+      if (await verifyPassword(student.password, password)) {
+        matchingStudents.push(student);
+      }
+    }
+
+    if (matchingStudents.length === 0) {
+      if (students.length === 0) {
+        const legacyStudents = await findLegacyStudentLoginCandidates(identifier);
+
+        for (const legacyStudent of legacyStudents) {
+          if (await verifyPassword(legacyStudent.password, password)) {
+            res.status(409).json({
+              success: false,
+              message:
+                "This student account is missing a school link. Open the student record in admin and re-save it under the correct school before logging in.",
+            });
+            return;
+          }
+        }
+      }
+
       res.status(401).json({
         success: false,
-        message: "Invalid school code, email or password",
+        message: "Invalid school code, email/student code or password",
       });
       return;
     }
 
-    if (!isSchoolSubscriptionActive(students[0])) {
+    if (matchingStudents.length > 1) {
+      res.status(409).json({
+        success: false,
+        message: "Multiple student accounts use this email. Please login with the generated student code instead.",
+      });
+      return;
+    }
+
+    const student = matchingStudents[0];
+
+    if (!isSchoolSubscriptionActive(student)) {
       res.status(403).json({
         success: false,
-        message: getSchoolAccessError(students[0]),
+        message: getSchoolAccessError(student),
       });
       return;
     }
 
-    await upgradePasswordIfNeeded("students", students[0].id, students[0].password, password);
+    await upgradePasswordIfNeeded("students", student.id, student.password, password);
 
     res.json({
       success: true,
       message: "Login successful",
-      student: toStudentPayload(students[0]),
+      student: toStudentPayload(student),
     });
   })
 );

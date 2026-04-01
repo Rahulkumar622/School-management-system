@@ -89,6 +89,13 @@
   gap: 12px;
 }
 
+.login-field-label {
+  margin: 2px 0 -4px;
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .login-card input,
 .login-card select {
   width: 100%;
