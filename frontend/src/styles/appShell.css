@@ -861,6 +861,153 @@ body {
   line-height: 1.6;
 }
 
+.workspace-nav-label {
+  display: block;
+  font-size: 0.96rem;
+}
+
+.workspace-nav-copy {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.workspace-nav-button--active .workspace-nav-copy {
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.activity-list,
+.feature-list,
+.timeline-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.activity-item,
+.feature-item,
+.timeline-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.84);
+  border: 1px solid rgba(226, 232, 240, 0.88);
+}
+
+.activity-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.activity-item strong,
+.activity-item span,
+.feature-item strong,
+.feature-item span,
+.timeline-item strong,
+.timeline-item span {
+  display: block;
+}
+
+.activity-item span:not(.status-pill),
+.feature-item span,
+.timeline-item span,
+.timeline-item p {
+  margin-top: 5px;
+}
+
+.activity-item-meta {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  text-align: right;
+  color: var(--text-soft);
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.profile-panel {
+  min-width: 0;
+}
+
+.profile-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.profile-placeholder {
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px dashed rgba(148, 163, 184, 0.46);
+  background: rgba(248, 250, 252, 0.78);
+  text-align: center;
+}
+
+.profile-placeholder h3 {
+  margin: 0 0 10px;
+}
+
+.profile-placeholder p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.chart-empty {
+  margin: 14px 0 0;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.finance-filter {
+  max-width: 220px;
+  margin-bottom: 18px;
+}
+
+.permission-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.permission-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(241, 245, 249, 0.92);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.permission-chip input {
+  margin: 0;
+}
+
 @media (max-width: 768px) {
   .page-shell {
     padding: 20px 14px 36px;
@@ -924,7 +1071,10 @@ body {
   }
 
   .highlight-grid,
-  .summary-grid {
+  .summary-grid,
+  .insight-grid,
+  .profile-layout,
+  .profile-section-grid {
     grid-template-columns: 1fr;
   }
 
@@ -934,5 +1084,18 @@ body {
 
   .workspace-sidebar {
     position: static;
+  }
+
+  .activity-item {
+    flex-direction: column;
+  }
+
+  .activity-item-meta {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .permission-grid {
+    flex-direction: column;
   }
 }

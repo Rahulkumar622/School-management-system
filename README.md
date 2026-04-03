@@ -95,6 +95,29 @@ The demo seed currently prepares:
 - marks entries
 - installment plan and payment history
 
+## Final Admin Workspace
+
+The school admin dashboard now includes a more complete workspace with:
+
+- overview analytics and KPI cards
+- student master-detail profiles
+- attendance and marks reporting sections
+- finance workspace with fee status updates
+- admissions review queue
+- timetable planner
+- notifications center
+- governance section with role permissions and audit logs
+
+## New Backend Modules
+
+The backend now supports:
+
+- `timetables`
+- `notifications`
+- `roles`, `permissions`, and `role_permissions`
+- `audit_logs`
+- simulated delivery hooks for `send-email` and `send-sms`
+
 ## Important Note
 
 This repository is using a local MySQL database that may already contain older experimental rows from previous testing. The credentials listed above are the known-good demo accounts created by `npm run seed:demo`.

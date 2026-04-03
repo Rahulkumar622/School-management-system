@@ -73,6 +73,27 @@ const normalizeStudentCode = (value) => normalizeIdentifier(value).toUpperCase()
 
 const normalizeClassName = (value) => normalizeIdentifier(value);
 
+const normalizeAudience = (value) => {
+  const normalized = normalizeIdentifier(value).toLowerCase();
+
+  if (["all", "parents", "teachers", "class"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "all";
+};
+
+const normalizeDayOfWeek = (value) => {
+  const normalized = normalizeIdentifier(value).toLowerCase();
+  const allowedDays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+  if (!allowedDays.includes(normalized)) {
+    return "";
+  }
+
+  return normalized;
+};
+
 const scryptAsync = (password, salt) =>
   new Promise((resolve, reject) => {
     crypto.scrypt(password, salt, 32, (error, derivedKey) => {
@@ -630,6 +651,148 @@ const bootstrapDatabase = async () => {
     )
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      school_id INT NOT NULL,
+      title VARCHAR(180) NOT NULL,
+      message TEXT NOT NULL,
+      audience VARCHAR(20) NOT NULL DEFAULT 'all',
+      class_name VARCHAR(50) DEFAULT '',
+      created_by VARCHAR(120) DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS timetables (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      school_id INT NOT NULL,
+      class_name VARCHAR(50) NOT NULL,
+      day_of_week VARCHAR(10) NOT NULL,
+      start_time VARCHAR(10) NOT NULL,
+      end_time VARCHAR(10) NOT NULL,
+      subject_name VARCHAR(120) NOT NULL,
+      teacher_name VARCHAR(150) DEFAULT '',
+      room_no VARCHAR(40) DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      school_id INT NULL,
+      name VARCHAR(80) NOT NULL,
+      description VARCHAR(255) DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_school_role (school_id, name)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS permissions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(80) NOT NULL UNIQUE,
+      label VARCHAR(120) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      role_id INT NOT NULL,
+      permission_id INT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_role_permission (role_id, permission_id)
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      school_id INT NULL,
+      user_name VARCHAR(150) DEFAULT '',
+      action VARCHAR(255) NOT NULL,
+      module VARCHAR(80) NOT NULL,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    INSERT IGNORE INTO permissions (name, label)
+    VALUES
+      ('manage_students', 'Manage Students'),
+      ('manage_attendance', 'Manage Attendance'),
+      ('manage_grades', 'Manage Grades'),
+      ('manage_fees', 'Manage Fees'),
+      ('manage_notifications', 'Manage Notifications'),
+      ('manage_timetable', 'Manage Timetable'),
+      ('manage_roles', 'Manage Roles')
+  `);
+
+  await query(`
+    INSERT INTO roles (school_id, name, description)
+    SELECT NULL, 'Admin', 'Full school management access'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM roles WHERE school_id IS NULL AND name = 'Admin'
+    )
+  `);
+
+  await query(`
+    INSERT INTO roles (school_id, name, description)
+    SELECT NULL, 'Teacher', 'Academic and attendance operations'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM roles WHERE school_id IS NULL AND name = 'Teacher'
+    )
+  `);
+
+  await query(`
+    INSERT INTO roles (school_id, name, description)
+    SELECT NULL, 'Office Staff', 'Fee, records, and front-office work'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM roles WHERE school_id IS NULL AND name = 'Office Staff'
+    )
+  `);
+
+  await query(`
+    INSERT INTO roles (school_id, name, description)
+    SELECT NULL, 'Parent', 'View-only child access'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM roles WHERE school_id IS NULL AND name = 'Parent'
+    )
+  `);
+
+  await query(`
+    INSERT IGNORE INTO role_permissions (role_id, permission_id)
+    SELECT roles.id, permissions.id
+    FROM roles
+    JOIN permissions
+    WHERE roles.school_id IS NULL
+      AND roles.name = 'Admin'
+  `);
+
+  await query(`
+    INSERT IGNORE INTO role_permissions (role_id, permission_id)
+    SELECT roles.id, permissions.id
+    FROM roles
+    JOIN permissions
+    WHERE roles.school_id IS NULL
+      AND roles.name = 'Teacher'
+      AND permissions.name IN ('manage_attendance', 'manage_grades', 'manage_timetable')
+  `);
+
+  await query(`
+    INSERT IGNORE INTO role_permissions (role_id, permission_id)
+    SELECT roles.id, permissions.id
+    FROM roles
+    JOIN permissions
+    WHERE roles.school_id IS NULL
+      AND roles.name = 'Office Staff'
+      AND permissions.name IN ('manage_students', 'manage_fees', 'manage_notifications')
+  `);
+
   await backfillClassCatalog();
 };
 
@@ -766,6 +929,18 @@ const buildSchoolFilter = (schoolId, alias = "") => {
     clause: `WHERE ${prefix}school_id = ?`,
     params: [schoolId],
   };
+};
+
+const createAuditLog = async ({ schoolId = null, userName = "", action, module }) => {
+  if (!normalizeIdentifier(action) || !normalizeIdentifier(module)) {
+    return;
+  }
+
+  await query(
+    `INSERT INTO audit_logs (school_id, user_name, action, module)
+     VALUES (?, ?, ?, ?)`,
+    [schoolId, normalizeIdentifier(userName), normalizeIdentifier(action), normalizeIdentifier(module)]
+  );
 };
 
 const findStudentByIdentifier = async (identifier, schoolCode = "") => {
@@ -1469,6 +1644,13 @@ app.post(
       ]
     );
 
+    await createAuditLog({
+      schoolId: school.id,
+      userName: req.body.created_by || req.body.createdBy || "School Admin",
+      action: `Created teacher ${name.trim()}`,
+      module: "Teachers",
+    });
+
     res.status(201).json({
       success: true,
       message: "Teacher added successfully",
@@ -1597,6 +1779,13 @@ app.patch(
       [nextName, nextEmail, nextPassword, nextAssignedClass, nextAssignedSubject, teacher.id]
     );
 
+    await createAuditLog({
+      schoolId: teacher.school_id,
+      userName: req.body.updated_by || req.body.updatedBy || "School Admin",
+      action: `Updated teacher ${nextName}`,
+      module: "Teachers",
+    });
+
     const updatedTeachers = await query(
       `SELECT
          teachers.id,
@@ -1686,6 +1875,13 @@ app.post(
 
     await ensureClassCatalogEntry(school.id, school.code, className);
 
+    await createAuditLog({
+      schoolId: school.id,
+      userName: req.body.created_by || req.body.createdBy || "School Admin",
+      action: `Created class ${className}`,
+      module: "Classes",
+    });
+
     const classes = await query(
       `SELECT id, school_id, school_code, class_name
        FROM classes
@@ -1698,6 +1894,612 @@ app.post(
       success: true,
       message: "Class created successfully",
       classes,
+    });
+  })
+);
+
+app.get(
+  "/timetables",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          timetables: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const params = [];
+    const conditions = [];
+
+    if (schoolId) {
+      conditions.push("school_id = ?");
+      params.push(schoolId);
+    }
+
+    if (req.query.className && normalizeClassName(req.query.className)) {
+      conditions.push("class_name = ?");
+      params.push(normalizeClassName(req.query.className));
+    }
+
+    if (req.query.dayOfWeek && normalizeDayOfWeek(req.query.dayOfWeek)) {
+      conditions.push("day_of_week = ?");
+      params.push(normalizeDayOfWeek(req.query.dayOfWeek));
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const timetables = await query(
+      `SELECT
+         id,
+         school_id,
+         class_name,
+         day_of_week,
+         start_time,
+         end_time,
+         subject_name,
+         teacher_name,
+         room_no
+       FROM timetables
+       ${whereClause}
+       ORDER BY FIELD(day_of_week, 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'), start_time ASC, id ASC`,
+      params
+    );
+
+    res.json({
+      success: true,
+      timetables,
+    });
+  })
+);
+
+app.post(
+  "/timetables",
+  asyncHandler(async (req, res) => {
+    const missingFields = requireFields(req.body, [
+      "class_name",
+      "day_of_week",
+      "start_time",
+      "end_time",
+      "subject_name",
+    ]);
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    const school = await resolveSchoolFromPayload(req.body);
+    const dayOfWeek = normalizeDayOfWeek(req.body.day_of_week);
+    const className = normalizeClassName(req.body.class_name);
+
+    if (!school) {
+      res.status(404).json({
+        success: false,
+        message: "School not found",
+      });
+      return;
+    }
+
+    if (!dayOfWeek) {
+      res.status(400).json({
+        success: false,
+        message: "day_of_week must be one of mon, tue, wed, thu, fri, sat, sun",
+      });
+      return;
+    }
+
+    await query(
+      `INSERT INTO timetables
+        (school_id, class_name, day_of_week, start_time, end_time, subject_name, teacher_name, room_no)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        school.id,
+        className,
+        dayOfWeek,
+        normalizeIdentifier(req.body.start_time),
+        normalizeIdentifier(req.body.end_time),
+        normalizeIdentifier(req.body.subject_name),
+        normalizeIdentifier(req.body.teacher_name),
+        normalizeIdentifier(req.body.room_no),
+      ]
+    );
+
+    await createAuditLog({
+      schoolId: school.id,
+      userName: req.body.created_by || req.body.createdBy || "School Admin",
+      action: `Created timetable slot for class ${className} on ${dayOfWeek}`,
+      module: "Timetable",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Timetable entry created successfully",
+    });
+  })
+);
+
+app.patch(
+  "/timetables/:id",
+  asyncHandler(async (req, res) => {
+    const rows = await query("SELECT * FROM timetables WHERE id = ? LIMIT 1", [req.params.id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Timetable entry not found",
+      });
+      return;
+    }
+
+    const row = rows[0];
+    const nextDay = normalizeDayOfWeek(req.body.day_of_week || row.day_of_week);
+    const nextClass = normalizeClassName(req.body.class_name || row.class_name);
+    const nextStart = normalizeIdentifier(req.body.start_time || row.start_time);
+    const nextEnd = normalizeIdentifier(req.body.end_time || row.end_time);
+    const nextSubject = normalizeIdentifier(req.body.subject_name || row.subject_name);
+    const nextTeacher = normalizeIdentifier(
+      req.body.teacher_name !== undefined ? req.body.teacher_name : row.teacher_name
+    );
+    const nextRoom = normalizeIdentifier(req.body.room_no !== undefined ? req.body.room_no : row.room_no);
+
+    if (!nextClass || !nextDay || !nextStart || !nextEnd || !nextSubject) {
+      res.status(400).json({
+        success: false,
+        message: "Class, day, time, and subject are required",
+      });
+      return;
+    }
+
+    await query(
+      `UPDATE timetables
+       SET class_name = ?, day_of_week = ?, start_time = ?, end_time = ?, subject_name = ?, teacher_name = ?, room_no = ?
+       WHERE id = ?`,
+      [nextClass, nextDay, nextStart, nextEnd, nextSubject, nextTeacher, nextRoom, row.id]
+    );
+
+    await createAuditLog({
+      schoolId: row.school_id,
+      userName: req.body.updated_by || req.body.updatedBy || "School Admin",
+      action: `Updated timetable slot ${row.id}`,
+      module: "Timetable",
+    });
+
+    res.json({
+      success: true,
+      message: "Timetable entry updated successfully",
+    });
+  })
+);
+
+app.delete(
+  "/timetables/:id",
+  asyncHandler(async (req, res) => {
+    const rows = await query("SELECT * FROM timetables WHERE id = ? LIMIT 1", [req.params.id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Timetable entry not found",
+      });
+      return;
+    }
+
+    await query("DELETE FROM timetables WHERE id = ?", [req.params.id]);
+
+    await createAuditLog({
+      schoolId: rows[0].school_id,
+      userName: req.body?.deleted_by || req.query.deleted_by || "School Admin",
+      action: `Deleted timetable slot ${req.params.id}`,
+      module: "Timetable",
+    });
+
+    res.json({
+      success: true,
+      message: "Timetable entry deleted successfully",
+    });
+  })
+);
+
+app.get(
+  "/notifications",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          notifications: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const params = [];
+    const conditions = [];
+
+    if (schoolId) {
+      conditions.push("school_id = ?");
+      params.push(schoolId);
+    }
+
+    if (req.query.audience && normalizeAudience(req.query.audience)) {
+      conditions.push("audience = ?");
+      params.push(normalizeAudience(req.query.audience));
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const notifications = await query(
+      `SELECT
+         id,
+         school_id,
+         title,
+         message,
+         audience,
+         class_name,
+         created_by,
+         created_at
+       FROM notifications
+       ${whereClause}
+       ORDER BY created_at DESC, id DESC`,
+      params
+    );
+
+    res.json({
+      success: true,
+      notifications,
+    });
+  })
+);
+
+app.post(
+  "/notifications",
+  asyncHandler(async (req, res) => {
+    const missingFields = requireFields(req.body, ["title", "message"]);
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    const school = await resolveSchoolFromPayload(req.body);
+
+    if (!school) {
+      res.status(404).json({
+        success: false,
+        message: "School not found",
+      });
+      return;
+    }
+
+    const audience = normalizeAudience(req.body.audience);
+    const className = audience === "class" ? normalizeClassName(req.body.class_name) : "";
+
+    if (audience === "class" && !className) {
+      res.status(400).json({
+        success: false,
+        message: "class_name is required when audience is class",
+      });
+      return;
+    }
+
+    await query(
+      `INSERT INTO notifications
+        (school_id, title, message, audience, class_name, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        school.id,
+        normalizeIdentifier(req.body.title),
+        normalizeIdentifier(req.body.message),
+        audience,
+        className,
+        normalizeIdentifier(req.body.created_by || req.body.createdBy),
+      ]
+    );
+
+    await createAuditLog({
+      schoolId: school.id,
+      userName: req.body.created_by || req.body.createdBy || "School Admin",
+      action: `Published notification ${normalizeIdentifier(req.body.title)}`,
+      module: "Notifications",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Notification created successfully",
+    });
+  })
+);
+
+app.patch(
+  "/notifications/:id",
+  asyncHandler(async (req, res) => {
+    const rows = await query("SELECT * FROM notifications WHERE id = ? LIMIT 1", [req.params.id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+      return;
+    }
+
+    const row = rows[0];
+    const nextTitle = normalizeIdentifier(req.body.title || row.title);
+    const nextMessage = normalizeIdentifier(req.body.message || row.message);
+    const nextAudience = normalizeAudience(req.body.audience || row.audience);
+    const nextClassName =
+      nextAudience === "class"
+        ? normalizeClassName(req.body.class_name !== undefined ? req.body.class_name : row.class_name)
+        : "";
+
+    if (!nextTitle || !nextMessage) {
+      res.status(400).json({
+        success: false,
+        message: "Title and message are required",
+      });
+      return;
+    }
+
+    if (nextAudience === "class" && !nextClassName) {
+      res.status(400).json({
+        success: false,
+        message: "class_name is required when audience is class",
+      });
+      return;
+    }
+
+    await query(
+      `UPDATE notifications
+       SET title = ?, message = ?, audience = ?, class_name = ?
+       WHERE id = ?`,
+      [nextTitle, nextMessage, nextAudience, nextClassName, row.id]
+    );
+
+    await createAuditLog({
+      schoolId: row.school_id,
+      userName: req.body.updated_by || req.body.updatedBy || "School Admin",
+      action: `Updated notification ${row.id}`,
+      module: "Notifications",
+    });
+
+    res.json({
+      success: true,
+      message: "Notification updated successfully",
+    });
+  })
+);
+
+app.delete(
+  "/notifications/:id",
+  asyncHandler(async (req, res) => {
+    const rows = await query("SELECT * FROM notifications WHERE id = ? LIMIT 1", [req.params.id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+      return;
+    }
+
+    await query("DELETE FROM notifications WHERE id = ?", [req.params.id]);
+
+    await createAuditLog({
+      schoolId: rows[0].school_id,
+      userName: req.body?.deleted_by || req.query.deleted_by || "School Admin",
+      action: `Deleted notification ${req.params.id}`,
+      module: "Notifications",
+    });
+
+    res.json({
+      success: true,
+      message: "Notification deleted successfully",
+    });
+  })
+);
+
+app.get(
+  "/roles",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          roles: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const roles = await query(
+      `SELECT
+         roles.id,
+         roles.school_id,
+         roles.name,
+         roles.description,
+         GROUP_CONCAT(permissions.name ORDER BY permissions.name SEPARATOR ',') AS permission_names,
+         GROUP_CONCAT(permissions.label ORDER BY permissions.name SEPARATOR ',') AS permission_labels
+       FROM roles
+       LEFT JOIN role_permissions ON role_permissions.role_id = roles.id
+       LEFT JOIN permissions ON permissions.id = role_permissions.permission_id
+       WHERE roles.school_id IS NULL OR roles.school_id = ?
+       GROUP BY roles.id, roles.school_id, roles.name, roles.description
+       ORDER BY roles.school_id IS NULL DESC, roles.name ASC`,
+      [schoolId || 0]
+    );
+
+    res.json({
+      success: true,
+      roles: roles.map((role) => ({
+        id: role.id,
+        school_id: role.school_id,
+        name: role.name,
+        description: role.description || "",
+        permissions: normalizeIdentifier(role.permission_names)
+          ? String(role.permission_names).split(",").filter(Boolean)
+          : [],
+        permission_labels: normalizeIdentifier(role.permission_labels)
+          ? String(role.permission_labels).split(",").filter(Boolean)
+          : [],
+      })),
+    });
+  })
+);
+
+app.get(
+  "/permissions",
+  asyncHandler(async (req, res) => {
+    const permissions = await query(
+      "SELECT id, name, label FROM permissions ORDER BY label ASC"
+    );
+
+    res.json({
+      success: true,
+      permissions,
+    });
+  })
+);
+
+app.post(
+  "/roles",
+  asyncHandler(async (req, res) => {
+    const missingFields = requireFields(req.body, ["name"]);
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    const school = await resolveSchoolFromPayload(req.body);
+
+    if (!school) {
+      res.status(404).json({
+        success: false,
+        message: "School not found",
+      });
+      return;
+    }
+
+    const roleName = normalizeIdentifier(req.body.name);
+    const roleDescription = normalizeIdentifier(req.body.description);
+    const requestedPermissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+
+    const existingRoles = await query(
+      "SELECT id FROM roles WHERE school_id = ? AND name = ? LIMIT 1",
+      [school.id, roleName]
+    );
+
+    let roleId = existingRoles[0]?.id || null;
+
+    if (roleId) {
+      await query("UPDATE roles SET description = ? WHERE id = ?", [roleDescription, roleId]);
+      await query("DELETE FROM role_permissions WHERE role_id = ?", [roleId]);
+    } else {
+      const roleInsert = await query(
+        "INSERT INTO roles (school_id, name, description) VALUES (?, ?, ?)",
+        [school.id, roleName, roleDescription]
+      );
+      roleId = roleInsert.insertId;
+    }
+
+    if (requestedPermissions.length > 0) {
+      const normalizedPermissions = requestedPermissions
+        .map((permission) => normalizeIdentifier(permission))
+        .filter(Boolean);
+
+      const permissionRows = normalizedPermissions.length
+        ? await query(
+            `SELECT id, name
+             FROM permissions
+             WHERE name IN (?)`,
+            [normalizedPermissions]
+          )
+        : [];
+
+      for (const permission of permissionRows) {
+        await query(
+          "INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)",
+          [roleId, permission.id]
+        );
+      }
+    }
+
+    await createAuditLog({
+      schoolId: school.id,
+      userName: req.body.created_by || req.body.createdBy || "School Admin",
+      action: `${existingRoles[0]?.id ? "Updated" : "Created"} role ${roleName}`,
+      module: "Roles",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Role saved successfully",
+      role_id: roleId,
+    });
+  })
+);
+
+app.delete(
+  "/roles/:id",
+  asyncHandler(async (req, res) => {
+    const rows = await query("SELECT * FROM roles WHERE id = ? LIMIT 1", [req.params.id]);
+
+    if (rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+      return;
+    }
+
+    const role = rows[0];
+
+    if (role.school_id === null) {
+      res.status(400).json({
+        success: false,
+        message: "Default roles cannot be deleted",
+      });
+      return;
+    }
+
+    await query("DELETE FROM role_permissions WHERE role_id = ?", [role.id]);
+    await query("DELETE FROM roles WHERE id = ?", [role.id]);
+
+    await createAuditLog({
+      schoolId: role.school_id,
+      userName: req.body?.deleted_by || req.query.deleted_by || "School Admin",
+      action: `Deleted role ${role.name}`,
+      module: "Roles",
+    });
+
+    res.json({
+      success: true,
+      message: "Role deleted successfully",
     });
   })
 );
@@ -1719,6 +2521,13 @@ app.post(
       await ensureClassCatalogEntry(school.id, school.code, String(classNumber));
     }
 
+    await createAuditLog({
+      schoolId: school.id,
+      userName: req.body.created_by || req.body.createdBy || "School Admin",
+      action: "Bootstrapped classes 1 to 12",
+      module: "Classes",
+    });
+
     const classes = await query(
       `SELECT id, school_id, school_code, class_name
        FROM classes
@@ -1731,6 +2540,97 @@ app.post(
       success: true,
       message: "Classes 1 to 12 are ready for this school",
       classes,
+    });
+  })
+);
+
+app.get(
+  "/audit-logs",
+  asyncHandler(async (req, res) => {
+    let schoolId = req.query.schoolId;
+
+    if (!schoolId && req.query.schoolCode) {
+      const school = await getSchoolByCode(normalizeStudentCode(req.query.schoolCode));
+      if (!school) {
+        res.json({
+          success: true,
+          audit_logs: [],
+        });
+        return;
+      }
+
+      schoolId = school.id;
+    }
+
+    const schoolFilter = buildSchoolFilter(schoolId, "audit_logs");
+    const auditLogs = await query(
+      `SELECT
+         id,
+         school_id,
+         user_name,
+         action,
+         module,
+         timestamp
+       FROM audit_logs
+       ${schoolFilter.clause}
+       ORDER BY timestamp DESC, id DESC
+       LIMIT 100`,
+      schoolFilter.params
+    );
+
+    res.json({
+      success: true,
+      audit_logs: auditLogs,
+    });
+  })
+);
+
+app.post(
+  "/send-email",
+  asyncHandler(async (req, res) => {
+    const missingFields = requireFields(req.body, ["to", "subject", "body"]);
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    const configured = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+
+    res.json({
+      success: true,
+      mode: configured ? "configured-not-implemented" : "simulated",
+      message: configured
+        ? "SMTP credentials detected, but provider-specific delivery is not implemented in this build yet."
+        : "Email request validated and recorded in simulated mode because SMTP is not configured.",
+    });
+  })
+);
+
+app.post(
+  "/send-sms",
+  asyncHandler(async (req, res) => {
+    const missingFields = requireFields(req.body, ["to", "message"]);
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    const configured = Boolean(process.env.SMS_PROVIDER_URL && process.env.SMS_PROVIDER_KEY);
+
+    res.json({
+      success: true,
+      mode: configured ? "configured-not-implemented" : "simulated",
+      message: configured
+        ? "SMS provider credentials detected, but provider-specific delivery is not implemented in this build yet."
+        : "SMS request validated and recorded in simulated mode because no SMS provider is configured.",
     });
   })
 );
@@ -2799,6 +3699,13 @@ app.patch(
 
     await syncInstallmentsWithPaidAmount(student.id, student.school_id, feeState.paid_fee);
 
+    await createAuditLog({
+      schoolId: student.school_id,
+      userName: req.body.updated_by || req.body.updatedBy || "School Admin",
+      action: `Updated fee status for student ${student.name} to ${feeState.fee_status}`,
+      module: "Fees",
+    });
+
     const updatedStudents = await query(
       `SELECT
          students.id,
@@ -3040,6 +3947,13 @@ app.post(
         [insertValues]
       );
     }
+
+    await createAuditLog({
+      schoolId: students[0]?.school_id || null,
+      userName: req.body.updated_by || req.body.updatedBy || "Teacher",
+      action: `Saved bulk attendance for ${req.body.subject.trim()} on ${req.body.date}`,
+      module: "Attendance",
+    });
 
     res.status(201).json({
       success: true,

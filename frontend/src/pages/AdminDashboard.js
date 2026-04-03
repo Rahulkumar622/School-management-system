@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import api from "../api";
 import { clearAdminSession, getAdminSession } from "../session";
-import SchoolAdminWorkspace from "./SchoolAdminWorkspace";
+import SchoolAdminWorkspace from "./SchoolAdminWorkspaceFinal";
 import "../styles/appShell.css";
 
 const formatCurrency = (value) => `Rs. ${Number(value || 0).toFixed(2)}`;

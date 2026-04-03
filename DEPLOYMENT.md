@@ -39,6 +39,12 @@ DB_CONNECTION_LIMIT=10
 CLIENT_URL=https://your-live-domain.com
 ADMIN_EMAIL=admin@gmail.com
 ADMIN_PASSWORD=1234
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMS_PROVIDER_URL=
+SMS_PROVIDER_KEY=
 ```
 
 Notes:
@@ -47,6 +53,7 @@ Notes:
 - Keep `DB_SSL=true` when your MySQL provider requires SSL.
 - If frontend and backend are deployed together on the same domain, `REACT_APP_API_URL` is not required.
 - The backend also supports `MYSQL_URL` or `DATABASE_URL` if your platform gives a full MySQL connection string.
+- Email and SMS endpoints currently support config detection plus simulated mode. Add real provider wiring before using them for production delivery.
 
 ## Railway deployment
 
