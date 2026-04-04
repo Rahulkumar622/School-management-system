@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import api from "../api";
-import { setParentSession } from "../session";
+import { setAuthToken, setParentSession } from "../session";
 import "../styles/login.css";
 
 function ParentLogin() {
@@ -31,6 +31,7 @@ function ParentLogin() {
       });
 
       setParentSession(data.parent);
+      setAuthToken(data.token);
       navigate("/parent-dashboard", {
         state: data.parent,
       });

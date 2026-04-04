@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import api from "../api";
-import { setAdminSession } from "../session";
+import { setAdminSession, setAuthToken } from "../session";
 import "../styles/login.css";
 
 function AdminLogin() {
@@ -33,11 +33,16 @@ function AdminLogin() {
       });
 
       setAdminSession(data.admin);
+      setAuthToken(data.token);
       navigate("/admin-dashboard", {
         state: data.admin,
       });
     } catch (requestError) {
-      setError(requestError.response?.data?.message || "Invalid owner/admin credentials.");
+      if (!requestError.response) {
+        setError("Server se connection nahi ho pa raha. API URL/CORS check karein.");
+      } else {
+        setError(requestError.response?.data?.message || "Invalid owner/admin credentials.");
+      }
     } finally {
       setIsSubmitting(false);
     }

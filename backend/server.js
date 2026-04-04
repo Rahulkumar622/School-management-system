@@ -3,13 +3,24 @@ const cors = require("cors");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const jwt = require("jsonwebtoken");
 const db = require("./db");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const SUPER_ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@gmail.com";
 const SUPER_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "1234";
+const JWT_SECRET = process.env.JWT_SECRET || "school-management-system-secret-key-change-in-production";
 const PASSWORD_HASH_PREFIX = "s2$";
+
+// JWT token generation function
+const generateAuthToken = (userId, role) => {
+  return jwt.sign(
+    { userId, role },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+};
 const frontendBuildPath = path.join(__dirname, "..", "frontend", "build");
 const allowedOrigins = String(process.env.CLIENT_URL || "")
   .split(",")
@@ -1245,6 +1256,7 @@ app.post(
 
     if (role === "super_admin") {
       if (email.trim() === SUPER_ADMIN_EMAIL && password === SUPER_ADMIN_PASSWORD) {
+        const token = generateAuthToken("super-admin", "super_admin");
         res.json({
           success: true,
           admin: {
@@ -1253,6 +1265,7 @@ app.post(
             email: SUPER_ADMIN_EMAIL,
             role: "super_admin",
           },
+          token,
         });
         return;
       }
@@ -1307,9 +1320,11 @@ app.post(
 
     await upgradePasswordIfNeeded("admin_users", admins[0].id, admins[0].password, password);
 
+    const token = generateAuthToken(admins[0].id, admins[0].role);
     res.json({
       success: true,
       admin: toAdminPayload(admins[0]),
+      token,
     });
   })
 );
@@ -2702,10 +2717,12 @@ app.post(
 
     await upgradePasswordIfNeeded("students", student.id, student.password, password);
 
+    const token = generateAuthToken(student.id, "student");
     res.json({
       success: true,
       message: "Login successful",
       student: toStudentPayload(student),
+      token,
     });
   })
 );
@@ -2757,10 +2774,12 @@ app.post(
 
     await upgradePasswordIfNeeded("teachers", teachers[0].id, teachers[0].password, password);
 
+    const token = generateAuthToken(teachers[0].id, "teacher");
     res.json({
       success: true,
       message: "Login successful",
       teacher: toTeacherPayload(teachers[0]),
+      token,
     });
   })
 );
@@ -2811,9 +2830,11 @@ app.post(
 
     await upgradePasswordIfNeeded("parents", parents[0].id, parents[0].password, req.body.password);
 
+    const token = generateAuthToken(parents[0].id, "parent");
     res.json({
       success: true,
       parent: toParentPayload(parents[0]),
+      token,
     });
   })
 );

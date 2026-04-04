@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import api from "./api";
-import { setStudentSession } from "./session";
+import { setAuthToken, setStudentSession } from "./session";
 import "./styles/login.css";
 import logo from "./images/logo.jpg";
 
@@ -32,6 +32,7 @@ function StudentLogin() {
       });
 
       setStudentSession(data.student);
+      setAuthToken(data.token);
       navigate("/student-dashboard", {
         state: data.student,
       });

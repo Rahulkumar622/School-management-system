@@ -2,6 +2,22 @@ const ADMIN_STORAGE_KEY = "sms_admin_session";
 const PARENT_STORAGE_KEY = "sms_parent_session";
 const STUDENT_STORAGE_KEY = "sms_student_session";
 const TEACHER_STORAGE_KEY = "sms_teacher_session";
+const AUTH_TOKEN_STORAGE_KEY = "sms_auth_token";
+
+export const getAuthToken = () => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "";
+
+export const setAuthToken = (token) => {
+  if (!token) {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, String(token));
+};
+
+export const clearAuthToken = () => {
+  localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+};
 
 export const getAdminSession = () => {
   try {
@@ -17,6 +33,7 @@ export const setAdminSession = (session) => {
 
 export const clearAdminSession = () => {
   localStorage.removeItem(ADMIN_STORAGE_KEY);
+  clearAuthToken();
 };
 
 export const getParentSession = () => {
@@ -33,6 +50,7 @@ export const setParentSession = (session) => {
 
 export const clearParentSession = () => {
   localStorage.removeItem(PARENT_STORAGE_KEY);
+  clearAuthToken();
 };
 
 export const getStudentSession = () => {
@@ -49,6 +67,7 @@ export const setStudentSession = (session) => {
 
 export const clearStudentSession = () => {
   localStorage.removeItem(STUDENT_STORAGE_KEY);
+  clearAuthToken();
 };
 
 export const getTeacherSession = () => {
@@ -65,4 +84,5 @@ export const setTeacherSession = (session) => {
 
 export const clearTeacherSession = () => {
   localStorage.removeItem(TEACHER_STORAGE_KEY);
+  clearAuthToken();
 };
