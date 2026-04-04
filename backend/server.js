@@ -61,6 +61,25 @@ app.post('/test-login', (req, res) => {
   });
 });
 
+// Debug database endpoint - shows schools and teachers
+app.get('/debug-db', async (req, res) => {
+  try {
+    const schools = await query('SELECT id, name, code, email FROM schools LIMIT 10');
+    const teachers = await query('SELECT id, name, email, school_id FROM teachers LIMIT 10');
+    const students = await query('SELECT id, name, email, school_id FROM students LIMIT 10');
+    const admins = await query('SELECT id, name, email, school_id FROM school_admins LIMIT 10');
+    res.json({
+      success: true,
+      schools,
+      teachers,
+      students,
+      admins
+    });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
 
 const query = (sql, params = []) =>
   new Promise((resolve, reject) => {
