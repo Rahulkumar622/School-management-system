@@ -23,13 +23,8 @@ const generateAuthToken = (userId, role) => {
 };
 const frontendBuildPath = path.join(__dirname, "..", "frontend", "build");
 
-// Simple CORS - allow all origins for now to debug
-app.use(cors({
-  origin: true,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-}));
+// CORS - allow all origins
+app.use(cors());
 
 app.use(express.json());
 
