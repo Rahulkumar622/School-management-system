@@ -61,11 +61,11 @@ app.post('/test-login', (req, res) => {
   });
 });
 
-// Debug database endpoint - shows schools and teachers
+// Debug database endpoint - shows schools and admins
 app.get('/debug-db', async (req, res) => {
   try {
     const tables = await query("SHOW TABLES");
-    const schools = await query('SELECT id, name, code FROM schools LIMIT 10').catch(() => []);
+    const schools = await query('SELECT id, name, code, admin_email FROM schools LIMIT 10').catch(() => []);
     const teachers = await query('SELECT id, name, email, school_id FROM teachers LIMIT 10').catch(() => []);
     const students = await query('SELECT id, name, student_code, school_id FROM students LIMIT 10').catch(() => []);
     res.json({
