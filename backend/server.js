@@ -43,6 +43,18 @@ app.get('/debug-cors', (req, res) => {
   });
 });
 
+// Debug config endpoint (check env vars - remove after debugging)
+app.get('/debug-config', (req, res) => {
+  res.json({
+    adminEmail: SUPER_ADMIN_EMAIL,
+    adminPasswordLength: SUPER_ADMIN_PASSWORD?.length || 0,
+    adminPasswordFirstChar: SUPER_ADMIN_PASSWORD?.[0] || 'none',
+    jwtSecretSet: !!JWT_SECRET,
+    nodeEnv: process.env.NODE_ENV || 'not set',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Test login endpoint (for debugging)
 app.post('/test-login', (req, res) => {
   console.log('Test login request:', req.body);
