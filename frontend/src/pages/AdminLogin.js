@@ -24,20 +24,29 @@ function AdminLogin() {
     setIsSubmitting(true);
     setError("");
 
-    try {
-      const { data } = await api.post("/admin-login", {
-        role,
-        schoolCode: schoolCode.trim().toUpperCase(),
-        email: email.trim(),
-        password,
-      });
+    const payload = {
+      role,
+      schoolCode: schoolCode.trim().toUpperCase(),
+      email: email.trim(),
+      password,
+    };
+    
+    console.log('[AdminLogin] Attempting login with:', { ...payload, password: '***' });
 
+    try {
+      const { data } = await api.post("/admin-login", payload);
+
+      console.log('[AdminLogin] Login successful:', data);
       setAdminSession(data.admin);
       setAuthToken(data.token);
       navigate("/admin-dashboard", {
         state: data.admin,
       });
     } catch (requestError) {
+      console.error('[AdminLogin] Login failed:', requestError);
+      console.error('[AdminLogin] Error response:', requestError.response?.data);
+      console.error('[AdminLogin] Error status:', requestError.response?.status);
+      
       if (!requestError.response) {
         setError("Server se connection nahi ho pa raha. API URL/CORS check karein.");
       } else {

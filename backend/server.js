@@ -22,43 +22,37 @@ const generateAuthToken = (userId, role) => {
   );
 };
 const frontendBuildPath = path.join(__dirname, "..", "frontend", "build");
-const allowedOrigins = String(process.env.CLIENT_URL || "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
 
-// CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, postman)
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
-    
-    // If no CLIENT_URL set, allow all origins
-    if (allowedOrigins.length === 0) {
-      callback(null, true);
-      return;
-    }
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    
-    console.log(`CORS blocked origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
-    callback(new Error("Not allowed by CORS"));
-  },
+// Simple CORS - allow all origins for now to debug
+app.use(cors({
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
-
-app.use(cors(corsOptions));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+}));
 
 app.use(express.json());
+
+// Debug endpoint
+app.get('/debug-cors', (req, res) => {
+  res.json({
+    success: true,
+    message: 'CORS working!',
+    origin: req.headers.origin || 'no origin',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test login endpoint (for debugging)
+app.post('/test-login', (req, res) => {
+  console.log('Test login request:', req.body);
+  res.json({
+    success: true,
+    message: 'Test login endpoint working',
+    received: req.body,
+    token: 'test-token-12345'
+  });
+});
 
 
 const query = (sql, params = []) =>

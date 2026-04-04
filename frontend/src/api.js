@@ -13,22 +13,26 @@ const resolveBaseUrl = () => {
     process.env.REACT_APP_FALLBACK_API_URL?.trim() ||
     "https://school-management-system-production-708f.up.railway.app";
 
-  if (configuredUrl) {
-    return configuredUrl.replace(/\/+$/, "");
-  }
+  let finalUrl;
 
-  if (typeof window !== "undefined") {
+  if (configuredUrl) {
+    finalUrl = configuredUrl.replace(/\/+$/, "");
+  } else if (typeof window !== "undefined") {
     const { hostname, origin } = window.location;
 
     if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://localhost:5000";
+      finalUrl = "http://localhost:5000";
+    } else {
+      // Prefer a dedicated API host in production when frontend is hosted separately.
+      finalUrl = fallbackUrl.replace(/\/+$/, "") || origin;
     }
-
-    // Prefer a dedicated API host in production when frontend is hosted separately.
-    return fallbackUrl.replace(/\/+$/, "") || origin;
+  } else {
+    finalUrl = fallbackUrl.replace(/\/+$/, "") || "http://localhost:5000";
   }
 
-  return fallbackUrl.replace(/\/+$/, "") || "http://localhost:5000";
+  console.log('[API] Base URL:', finalUrl);
+  console.log('[API] REACT_APP_API_URL env:', configuredUrl || 'not set');
+  return finalUrl;
 };
 
 const api = axios.create({
@@ -49,6 +53,7 @@ api.interceptors.request.use((config) => {
     };
   }
 
+  console.log('[API Request]', config.method?.toUpperCase(), config.baseURL + config.url, config.data);
   return config;
 });
 
