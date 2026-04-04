@@ -4121,8 +4121,25 @@ const registerFrontendApp = () => {
 
   app.use(express.static(frontendBuildPath));
 
-  app.get(/.*/, (req, res, next) => {
+  // Catch-all for frontend routes (only GET requests that accept HTML)
+  app.use((req, res, next) => {
+    // Only handle GET requests
+    if (req.method !== 'GET') {
+      next();
+      return;
+    }
+    
+    // Only handle requests that accept HTML
     if (!req.accepts("html")) {
+      next();
+      return;
+    }
+    
+    // Don't intercept API routes
+    if (req.path.startsWith('/api') || 
+        req.path.includes('-login') || 
+        req.path.includes('/debug') ||
+        req.path.includes('/test-')) {
       next();
       return;
     }
