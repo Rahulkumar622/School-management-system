@@ -33,6 +33,10 @@ const resolveBaseUrl = () => {
 
 const api = axios.create({
   baseURL: resolveBaseUrl(),
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 api.interceptors.request.use((config) => {
