@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import api from "../api";
 import { getAdminSession, getTeacherSession } from "../session";
 import "../styles/appShell.css";
+import "../styles/viewStudents.css";
 
 function ViewStudents() {
   const adminSession = getAdminSession();
@@ -16,36 +17,91 @@ function ViewStudents() {
   const [parents, setParents] = useState([]);
   const [schools, setSchools] = useState([]);
   const [selectedSchool, setSelectedSchool] = useState("");
+  const [selectedClass, setSelectedClass] = useState("all");
   const [error, setError] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
   const [isLoading, setIsLoading] = useState(false);
   const [linkValues, setLinkValues] = useState({});
   const [savingStudentId, setSavingStudentId] = useState(null);
-  const feeSummary = students.reduce(
-    (summary, student) => {
-      summary.annual += Number(student.annual_fee || 0);
-      summary.paid += Number(student.paid_fee || 0);
-      summary.due += Number(student.due_fee || 0);
 
-      if (String(student.fee_status || "").toLowerCase() !== "paid") {
-        summary.pending += 1;
+  const formatClassLabel = (className) => {
+    const trimmedClass = String(className || "").trim();
+
+    if (!trimmedClass) {
+      return "";
+    }
+
+    const lowerClass = trimmedClass.toLowerCase();
+    if (
+      lowerClass.endsWith("st") ||
+      lowerClass.endsWith("nd") ||
+      lowerClass.endsWith("rd") ||
+      lowerClass.endsWith("th")
+    ) {
+      return trimmedClass;
+    }
+
+    if (/^\d+$/.test(trimmedClass)) {
+      const classNumber = Number(trimmedClass);
+      const lastTwoDigits = classNumber % 100;
+
+      if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+        return `${classNumber}th`;
       }
 
-      return summary;
-    },
-    {
-      annual: 0,
-      paid: 0,
-      due: 0,
-      pending: 0,
+      const lastDigit = classNumber % 10;
+
+      if (lastDigit === 1) {
+        return `${classNumber}st`;
+      }
+
+      if (lastDigit === 2) {
+        return `${classNumber}nd`;
+      }
+
+      if (lastDigit === 3) {
+        return `${classNumber}rd`;
+      }
+
+      return `${classNumber}th`;
     }
+
+    return trimmedClass;
+  };
+
+  const classOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          students
+            .map((student) => String(student.class || "").trim())
+            .filter(Boolean)
+        )
+      ).sort((left, right) =>
+        left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" })
+      ),
+    [students]
   );
+
+  const filteredStudents = useMemo(() => {
+    if (selectedClass === "all") {
+      return students;
+    }
+
+    return students.filter(
+      (student) => String(student.class || "").trim() === selectedClass
+    );
+  }, [selectedClass, students]);
 
   useEffect(() => {
     if (lockedSchoolId) {
       setSelectedSchool(String(lockedSchoolId));
     }
   }, [lockedSchoolId]);
+
+  useEffect(() => {
+    setSelectedClass("all");
+  }, [selectedSchool, lockedSchoolId]);
 
   useEffect(() => {
     const loadSchools = async () => {
@@ -160,44 +216,23 @@ function ViewStudents() {
       <div className="page-card">
         <div className="page-header">
           <div className="header-copy">
-            <span className="eyebrow">Student Roster</span>
+            <span className="eyebrow">Student Directory</span>
             <h2>Students</h2>
-            <p className="hero-lead">Review the student roster, school assignment, and fee payment status.</p>
             <div className="hero-meta">
-              <span className="meta-chip">{students.length} students</span>
-              <span className="meta-chip">{parents.length} parent accounts</span>
+              <span className="meta-chip">Total School Students: {students.length}</span>
+              <span className="meta-chip">Visible: {filteredStudents.length}</span>
+              <span className="meta-chip">Classes: {classOptions.length}</span>
               {lockedSchoolId ? <span className="meta-chip">School locked</span> : null}
             </div>
           </div>
         </div>
 
         <div className="section-stack">
-          <div className="card-grid">
-            <div className="info-card stat-card stat-card--tone-primary">
-              <span className="card-eyebrow">Roster</span>
-              <h3>Total Students</h3>
-              <p className="metric">{students.length}</p>
-              <p className="metric-note">Students currently visible in this filtered roster.</p>
-            </div>
-            <div className="info-card stat-card stat-card--tone-neutral">
-              <span className="card-eyebrow">Collections</span>
-              <h3>Pending Fee Students</h3>
-              <p className="metric">{feeSummary.pending}</p>
-              <p className="metric-note">Students whose fee status is not yet fully paid.</p>
-            </div>
-            <div className="info-card stat-card stat-card--tone-accent">
-              <span className="card-eyebrow">Due Amount</span>
-              <h3>Outstanding Fee</h3>
-              <p className="metric">Rs. {feeSummary.due.toFixed(2)}</p>
-              <p className="metric-note">Total balance still pending across listed students.</p>
-            </div>
-          </div>
-
-          <div className="info-card">
+          <div className="info-card student-filter-card">
             <div className="section-heading">
               <div>
                 <h3>Filter Students</h3>
-                <p className="section-caption">Narrow the roster to one school before managing parent links.</p>
+                <p className="section-caption">School aur class ke hisaab se roster ko instantly filter karein.</p>
               </div>
             </div>
 
@@ -218,6 +253,46 @@ function ViewStudents() {
                   ))}
                 </select>
               </div>
+              <div className="field-group">
+                <label htmlFor="student-filter-class">Filter by Class</label>
+                <select
+                  id="student-filter-class"
+                  value={selectedClass}
+                  onChange={(event) => setSelectedClass(event.target.value)}
+                >
+                  <option value="all">All Students</option>
+                  {classOptions.map((className) => (
+                    <option key={className} value={className}>
+                      {formatClassLabel(className)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="student-filter-summary">
+              <div className="student-filter-spotlight">
+                <span className="card-eyebrow">Dropdown View</span>
+                <h4>
+                  {selectedClass === "all"
+                    ? "All Students"
+                    : `${formatClassLabel(selectedClass)} Students`}
+                </h4>
+                <p>
+                  {selectedClass === "all"
+                    ? "Dropdown me All Students select karne par selected school ke saare students yahan dikhte hain."
+                    : `Dropdown se ${formatClassLabel(selectedClass)} select ki gayi hai, isliye sirf us class ke ${filteredStudents.length} students dikh rahe hain.`}
+                </p>
+              </div>
+              <div className="student-filter-summary-card">
+                <span className="card-eyebrow">Selected Count</span>
+                <h4>{filteredStudents.length}</h4>
+                <p>
+                  {selectedClass === "all"
+                    ? "Ye selected school ka total student count hai."
+                    : `Ye ${formatClassLabel(selectedClass)} class ka total student count hai.`}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -229,12 +304,22 @@ function ViewStudents() {
           <p className="empty-state">Students load ho rahe hain...</p>
         ) : students.length === 0 ? (
           <p className="empty-state">No students found yet.</p>
+        ) : filteredStudents.length === 0 ? (
+          <div className="info-card student-empty-card">
+            <span className="card-eyebrow">No Match</span>
+            <h3>No students found for this class filter.</h3>
+            <p className="section-caption">Class change karke ya Total School Students select karke full roster dekhein.</p>
+          </div>
         ) : (
           <div className="info-card table-panel">
             <div className="table-panel-header">
-              <span className="card-eyebrow">Roster Table</span>
-              <h3>Student Records</h3>
-              <p className="section-caption">Scroll horizontally on smaller screens to review the complete roster.</p>
+              <span className="card-eyebrow">Live Records</span>
+              <h3>
+                {selectedClass === "all"
+                  ? "All Student Records"
+                  : `${formatClassLabel(selectedClass)} Student Records`}
+              </h3>
+              <p className="section-caption">Responsive table me filtered roster visible hai.</p>
             </div>
 
             <div className="table-wrapper">
@@ -256,7 +341,7 @@ function ViewStudents() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((student) => (
+                  {filteredStudents.map((student) => (
                     <tr key={student.id}>
                       <td>{student.student_code || "-"}</td>
                       <td>{student.school_name || "-"}</td>
