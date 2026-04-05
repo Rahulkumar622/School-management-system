@@ -93,6 +93,22 @@ function ViewStudents() {
     );
   }, [selectedClass, students]);
 
+  const activeSchoolLabel = useMemo(() => {
+    if (!selectedSchool && !lockedSchoolId) {
+      return "All Schools";
+    }
+
+    const activeSchool = schools.find(
+      (school) => String(school.id) === String(selectedSchool || lockedSchoolId || "")
+    );
+
+    if (!activeSchool) {
+      return "School";
+    }
+
+    return `${activeSchool.name} (${activeSchool.code})`;
+  }, [lockedSchoolId, schools, selectedSchool]);
+
   useEffect(() => {
     if (lockedSchoolId) {
       setSelectedSchool(String(lockedSchoolId));
@@ -166,9 +182,7 @@ function ViewStudents() {
         const { data } = await api.get("/parents", { params });
         setParents(data.parents || []);
       } catch (requestError) {
-        setError(
-          requestError.response?.data?.message || "Unable to fetch parent accounts."
-        );
+        setParents([]);
       }
     };
 
@@ -218,7 +232,10 @@ function ViewStudents() {
           <div className="header-copy">
             <span className="eyebrow">Student Records</span>
             <h2>Students</h2>
-            <p className="hero-lead">Class select karo aur us class ke student record right side me dekho.</p>
+          </div>
+          <div className="student-header-school">
+            <span className="card-eyebrow">School Name</span>
+            <strong>{activeSchoolLabel}</strong>
           </div>
         </div>
 

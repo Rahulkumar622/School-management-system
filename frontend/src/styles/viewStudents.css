@@ -8,6 +8,21 @@
   overflow: hidden;
 }
 
+.student-header-school {
+  min-width: 300px;
+  padding: 22px 28px;
+  border: 2px solid rgba(15, 23, 42, 0.7);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(240, 249, 255, 0.92));
+  text-align: center;
+}
+
+.student-header-school strong {
+  display: block;
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+}
+
 .student-record-board__left,
 .student-record-board__right {
   padding: 28px;
@@ -125,6 +140,11 @@
 }
 
 @media (max-width: 768px) {
+  .student-header-school {
+    width: 100%;
+    min-width: 0;
+  }
+
   .student-record-board {
     grid-template-columns: 1fr;
     min-height: auto;
