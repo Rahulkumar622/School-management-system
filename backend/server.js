@@ -82,6 +82,60 @@ app.get('/debug-db', async (req, res) => {
   }
 });
 
+app.get('/debug-db-info', async (req, res) => {
+  try {
+    const databaseInfo = await query(
+      `SELECT
+         DATABASE() AS database_name,
+         @@hostname AS db_host,
+         @@port AS db_port`
+    );
+    const schoolCount = await query("SELECT COUNT(*) AS total FROM schools").catch(() => [{ total: 0 }]);
+    const adminCount = await query(
+      "SELECT COUNT(*) AS total FROM admin_users WHERE role = 'school_admin'"
+    ).catch(() => [{ total: 0 }]);
+
+    res.json({
+      success: true,
+      database: databaseInfo[0] || {},
+      totals: {
+        schools: Number(schoolCount[0]?.total || 0),
+        school_admins: Number(adminCount[0]?.total || 0),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
+app.get('/debug-school-admins', async (req, res) => {
+  try {
+    const admins = await query(
+      `SELECT
+         admin_users.id,
+         admin_users.school_id,
+         admin_users.name,
+         admin_users.email,
+         admin_users.role,
+         schools.name AS school_name,
+         schools.code AS school_code
+       FROM admin_users
+       LEFT JOIN schools ON schools.id = admin_users.school_id
+       WHERE admin_users.role = 'school_admin'
+       ORDER BY admin_users.id ASC`
+    );
+
+    res.json({
+      success: true,
+      admins,
+      count: admins.length,
+    });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
 
 const query = (sql, params = []) =>
   new Promise((resolve, reject) => {
