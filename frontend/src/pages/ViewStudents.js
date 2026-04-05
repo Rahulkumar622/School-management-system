@@ -216,29 +216,21 @@ function ViewStudents() {
       <div className="page-card">
         <div className="page-header">
           <div className="header-copy">
-            <span className="eyebrow">Student Directory</span>
+            <span className="eyebrow">Student Records</span>
             <h2>Students</h2>
-            <div className="hero-meta">
-              <span className="meta-chip">Total School Students: {students.length}</span>
-              <span className="meta-chip">Visible: {filteredStudents.length}</span>
-              <span className="meta-chip">Classes: {classOptions.length}</span>
-              {lockedSchoolId ? <span className="meta-chip">School locked</span> : null}
-            </div>
+            <p className="hero-lead">Class select karo aur us class ke student record right side me dekho.</p>
           </div>
         </div>
 
-        <div className="section-stack">
-          <div className="info-card student-filter-card">
-            <div className="section-heading">
-              <div>
-                <h3>Filter Students</h3>
-                <p className="section-caption">School aur class ke hisaab se roster ko instantly filter karein.</p>
-              </div>
+        <div className="student-record-board">
+          <div className="student-record-board__left">
+            <div className="student-panel-heading">
+              <h3>Filter by Student</h3>
             </div>
 
-            <div className="form-grid">
+            <div className="student-filter-stack">
               <div className="field-group">
-                <label htmlFor="student-filter-school">Filter by School</label>
+                <label htmlFor="student-filter-school">School</label>
                 <select
                   id="student-filter-school"
                   value={selectedSchool}
@@ -254,7 +246,7 @@ function ViewStudents() {
                 </select>
               </div>
               <div className="field-group">
-                <label htmlFor="student-filter-class">Filter by Class</label>
+                <label htmlFor="student-filter-class">Class</label>
                 <select
                   id="student-filter-class"
                   value={selectedClass}
@@ -270,134 +262,91 @@ function ViewStudents() {
               </div>
             </div>
 
-            <div className="student-filter-summary">
-              <div className="student-filter-spotlight">
-                <span className="card-eyebrow">Dropdown View</span>
-                <h4>
-                  {selectedClass === "all"
-                    ? "All Students"
-                    : `${formatClassLabel(selectedClass)} Students`}
-                </h4>
-                <p>
-                  {selectedClass === "all"
-                    ? "Dropdown me All Students select karne par selected school ke saare students yahan dikhte hain."
-                    : `Dropdown se ${formatClassLabel(selectedClass)} select ki gayi hai, isliye sirf us class ke ${filteredStudents.length} students dikh rahe hain.`}
-                </p>
-              </div>
-              <div className="student-filter-summary-card">
-                <span className="card-eyebrow">Selected Count</span>
-                <h4>{filteredStudents.length}</h4>
-                <p>
-                  {selectedClass === "all"
-                    ? "Ye selected school ka total student count hai."
-                    : `Ye ${formatClassLabel(selectedClass)} class ka total student count hai.`}
-                </p>
-              </div>
+            <div className="student-filter-note">
+              <strong>{selectedClass === "all" ? "All Students" : formatClassLabel(selectedClass)}</strong>
+              <span>{filteredStudents.length} students visible</span>
             </div>
+          </div>
+
+          <div className="student-record-board__right">
+            <div className="student-panel-heading">
+              <h3>
+                {selectedClass === "all"
+                  ? "Student Record List"
+                  : `${formatClassLabel(selectedClass)} Student Record`}
+              </h3>
+              <p>List of students</p>
+            </div>
+
+            {isLoading ? (
+              <p className="empty-state">Students load ho rahe hain...</p>
+            ) : students.length === 0 ? (
+              <p className="empty-state">No students found yet.</p>
+            ) : filteredStudents.length === 0 ? (
+              <div className="student-empty-card">
+                <h3>No students found for this class.</h3>
+                <p className="section-caption">Class change karke phir dekhein.</p>
+              </div>
+            ) : (
+              <div className="student-list-panel">
+                {filteredStudents.map((student) => (
+                  <div key={student.id} className="student-record-item">
+                    <div className="student-record-main">
+                      <div>
+                        <strong>{student.name}</strong>
+                        <span>
+                          {student.student_code || "-"} | Class {student.class} {student.section} | Roll {student.roll_no}
+                        </span>
+                        <span>{student.school_name || "-"}</span>
+                      </div>
+                      <div className="student-record-fee">
+                        <strong>Rs. {Number(student.due_fee || 0).toFixed(2)}</strong>
+                        <span className="capitalize">{student.fee_status}</span>
+                      </div>
+                    </div>
+
+                    {!teacherSession?.id ? (
+                      <div className="student-record-actions">
+                        <select
+                          value={linkValues[String(student.id)] ?? ""}
+                          onChange={(event) =>
+                            handleParentSelection(student.id, event.target.value)
+                          }
+                        >
+                          <option value="">No Parent Link</option>
+                          {parents
+                            .filter(
+                              (parent) =>
+                                Number(parent.school_id) === Number(student.school_id)
+                            )
+                            .map((parent) => (
+                              <option key={parent.id} value={parent.id}>
+                                {parent.name} ({parent.email})
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          className="secondary-button"
+                          onClick={() => handleParentLinkSave(student)}
+                          disabled={
+                            savingStudentId === student.id ||
+                            String(student.parent_id || "") ===
+                              String(linkValues[String(student.id)] || "")
+                          }
+                        >
+                          {savingStudentId === student.id ? "Saving..." : "Save Link"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {error ? <p className="status-message error">{error}</p> : null}
         {status.message ? <p className={`status-message ${status.type}`}>{status.message}</p> : null}
-
-        {isLoading ? (
-          <p className="empty-state">Students load ho rahe hain...</p>
-        ) : students.length === 0 ? (
-          <p className="empty-state">No students found yet.</p>
-        ) : filteredStudents.length === 0 ? (
-          <div className="info-card student-empty-card">
-            <span className="card-eyebrow">No Match</span>
-            <h3>No students found for this class filter.</h3>
-            <p className="section-caption">Class change karke ya Total School Students select karke full roster dekhein.</p>
-          </div>
-        ) : (
-          <div className="info-card table-panel">
-            <div className="table-panel-header">
-              <span className="card-eyebrow">Live Records</span>
-              <h3>
-                {selectedClass === "all"
-                  ? "All Student Records"
-                  : `${formatClassLabel(selectedClass)} Student Records`}
-              </h3>
-              <p className="section-caption">Responsive table me filtered roster visible hai.</p>
-            </div>
-
-            <div className="table-wrapper">
-              <table className="data-table wide-table">
-                <thead>
-                  <tr>
-                    <th>Student Code</th>
-                    <th>School</th>
-                    <th>Name</th>
-                    <th>Linked Parent</th>
-                    <th>Class</th>
-                    <th>Section</th>
-                    <th>Roll No</th>
-                    <th>Annual Fee</th>
-                    <th>Paid</th>
-                    <th>Due</th>
-                    <th>Fee Status</th>
-                    {!teacherSession?.id ? <th>Manage Parent Link</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents.map((student) => (
-                    <tr key={student.id}>
-                      <td>{student.student_code || "-"}</td>
-                      <td>{student.school_name || "-"}</td>
-                      <td>{student.name}</td>
-                      <td>
-                        {student.parent_name ? `${student.parent_name} (${student.parent_email || "-"})` : "Not linked"}
-                      </td>
-                      <td>{student.class}</td>
-                      <td>{student.section}</td>
-                      <td>{student.roll_no}</td>
-                      <td>Rs. {Number(student.annual_fee || 0).toFixed(2)}</td>
-                      <td>Rs. {Number(student.paid_fee || 0).toFixed(2)}</td>
-                      <td>Rs. {Number(student.due_fee || 0).toFixed(2)}</td>
-                      <td className="capitalize">{student.fee_status}</td>
-                      {!teacherSession?.id ? (
-                        <td className="actions-cell">
-                          <div className="table-actions" style={{ minWidth: "220px" }}>
-                            <select
-                              value={linkValues[String(student.id)] ?? ""}
-                              onChange={(event) =>
-                                handleParentSelection(student.id, event.target.value)
-                              }
-                            >
-                              <option value="">No Parent Link</option>
-                              {parents
-                                .filter(
-                                  (parent) =>
-                                    Number(parent.school_id) === Number(student.school_id)
-                                )
-                                .map((parent) => (
-                                  <option key={parent.id} value={parent.id}>
-                                    {parent.name} ({parent.email})
-                                  </option>
-                                ))}
-                            </select>
-                            <button
-                              className="secondary-button"
-                              onClick={() => handleParentLinkSave(student)}
-                              disabled={
-                                savingStudentId === student.id ||
-                                String(student.parent_id || "") ===
-                                  String(linkValues[String(student.id)] || "")
-                              }
-                            >
-                              {savingStudentId === student.id ? "Saving..." : "Save Link"}
-                            </button>
-                          </div>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
