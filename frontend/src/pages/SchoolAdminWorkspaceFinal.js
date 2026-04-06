@@ -3574,9 +3574,6 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
                 </p>
                 <div className="hero-meta">
                   <span className="meta-chip">Principal / Admin workspace</span>
-                  <span className="meta-chip">{activeStats?.teachers ?? 0} teachers</span>
-                  <span className="meta-chip">{Math.max(safeNumber(activeStats?.classes), classOptions.length)} classes</span>
-                  <span className="meta-chip">{payments.length} payment entries</span>
                 </div>
               </div>
             </div>
