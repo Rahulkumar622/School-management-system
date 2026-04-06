@@ -340,6 +340,19 @@ const ensureColumn = async (tableName, columnName, definition) => {
   }
 };
 
+const ensureNullableColumn = async (tableName, columnName, definition) => {
+  const columns = await query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+
+  if (columns.length === 0) {
+    return;
+  }
+
+  const isNullable = String(columns[0].Null || "").toUpperCase() === "YES";
+  if (!isNullable) {
+    await query(`ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} ${definition}`);
+  }
+};
+
 const generateStudentCode = async (school) => {
   const schoolCode = String(school.code || "SCH").trim().toUpperCase();
   const studentCounts = await query(
@@ -828,6 +841,7 @@ const bootstrapDatabase = async () => {
   await ensureColumn("schools", "software_paid_amount", "DECIMAL(10,2) NOT NULL DEFAULT 0");
   await ensureColumn("schools", "software_due_amount", "DECIMAL(10,2) NOT NULL DEFAULT 0");
   await ensureColumn("schools", "software_fee_status", "VARCHAR(20) NOT NULL DEFAULT 'not_set'");
+  await ensureNullableColumn("admissions", "parent_id", "INT NULL");
   await ensureColumn("schools", "last_payment_date", "DATE NULL");
   await query("UPDATE schools SET plan_name = 'Free' WHERE COALESCE(plan_name, '') <> 'Free'");
   await query(
