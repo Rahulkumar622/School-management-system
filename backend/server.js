@@ -136,6 +136,32 @@ app.get('/debug-school-admins', async (req, res) => {
   }
 });
 
+app.post('/debug-sync-admissions', async (req, res) => {
+  try {
+    const school = req.body?.schoolCode
+      ? await getSchoolByCode(normalizeStudentCode(req.body.schoolCode))
+      : req.body?.schoolId
+        ? await getSchoolById(req.body.schoolId)
+        : null;
+    const summary = await syncAdmissionsForExistingStudents(school);
+
+    res.json({
+      success: true,
+      school: school
+        ? {
+            id: school.id,
+            name: school.name,
+            code: school.code,
+          }
+        : null,
+      ...summary,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
 
 const query = (sql, params = []) =>
   new Promise((resolve, reject) => {
@@ -553,6 +579,119 @@ const loadStudentFeeSnapshot = async (studentId) => {
       amount_due: Number(installment.amount_due || 0),
       amount_paid: Number(installment.amount_paid || 0),
     })),
+  };
+};
+
+const buildAdmissionReferenceNumber = (schoolCode, studentId) =>
+  `ADM-${normalizeStudentCode(schoolCode || "SCH")}-SYNC-${studentId}`;
+
+const ensureAdmissionRecordForStudent = async ({
+  studentId,
+  schoolId,
+  schoolCode,
+  studentName,
+  className,
+  parentId = null,
+  previousSchool = "",
+  notes = "",
+  status = "enrolled",
+}) => {
+  const normalizedStudentName = normalizeIdentifier(studentName);
+  const normalizedClassName = normalizeClassName(className);
+
+  if (!studentId || !schoolId || !normalizedStudentName || !normalizedClassName) {
+    return null;
+  }
+
+  const existingAdmissions = await query(
+    `SELECT id, reference_number
+     FROM admissions
+     WHERE school_id = ?
+       AND LOWER(TRIM(student_name)) = LOWER(TRIM(?))
+       AND class_name = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [schoolId, normalizedStudentName, normalizedClassName]
+  );
+
+  if (existingAdmissions.length > 0) {
+    return {
+      id: existingAdmissions[0].id,
+      reference_number: existingAdmissions[0].reference_number,
+      created: false,
+    };
+  }
+
+  const referenceNumber = buildAdmissionReferenceNumber(schoolCode, studentId);
+  const insertResult = await query(
+    `INSERT INTO admissions
+      (school_id, school_code, parent_id, student_name, class_name, previous_school, status, reference_number, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      schoolId,
+      normalizeStudentCode(schoolCode || ""),
+      parentId || null,
+      normalizedStudentName,
+      normalizedClassName,
+      normalizeIdentifier(previousSchool),
+      normalizeIdentifier(status) || "enrolled",
+      referenceNumber,
+      normalizeIdentifier(notes) || "Auto-created from student record",
+    ]
+  );
+
+  return {
+    id: insertResult.insertId,
+    reference_number: referenceNumber,
+    created: true,
+  };
+};
+
+const syncAdmissionsForExistingStudents = async (school) => {
+  const params = [];
+  let whereClause = "";
+
+  if (school?.id) {
+    whereClause = "WHERE students.school_id = ?";
+    params.push(school.id);
+  }
+
+  const students = await query(
+    `SELECT
+       students.id,
+       students.school_id,
+       students.parent_id,
+       students.name,
+       students.class,
+       schools.code AS school_code
+     FROM students
+     LEFT JOIN schools ON schools.id = students.school_id
+     ${whereClause}
+     ORDER BY students.id ASC`,
+    params
+  );
+
+  let createdCount = 0;
+
+  for (const student of students) {
+    const result = await ensureAdmissionRecordForStudent({
+      studentId: student.id,
+      schoolId: student.school_id,
+      schoolCode: student.school_code,
+      studentName: student.name,
+      className: student.class,
+      parentId: student.parent_id,
+      notes: "Auto-created by admission sync",
+    });
+
+    if (result?.created) {
+      createdCount += 1;
+    }
+  }
+
+  return {
+    total_students: students.length,
+    created_admissions: createdCount,
   };
 };
 
@@ -1670,6 +1809,15 @@ app.post(
     );
 
     await createInstallmentsForStudent(insertResult.insertId, school.id, annualFee);
+    await ensureAdmissionRecordForStudent({
+      studentId: insertResult.insertId,
+      schoolId: school.id,
+      schoolCode: school.code,
+      studentName: name,
+      className,
+      parentId: req.body.parent_id || null,
+      notes: "Auto-created from Add Student flow",
+    });
 
     res.status(201).json({
       success: true,
