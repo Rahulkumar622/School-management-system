@@ -1,5 +1,5 @@
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_REGEX = /^\d{10,15}$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const PHONE_REGEX = /^\d{10}$/;
 const SCHOOL_CODE_REGEX = /^[A-Z0-9-]{2,20}$/;
 const SECTION_REGEX = /^[A-Z0-9]{1,10}$/;
 const ROLL_NUMBER_REGEX = /^\d{1,6}$/;

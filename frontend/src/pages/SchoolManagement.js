@@ -172,7 +172,7 @@ function SchoolManagement() {
     }
 
     if (schoolForm.contact_phone && !isValidPhone(schoolForm.contact_phone)) {
-      setStatus({ type: "error", message: "Contact phone me 10 se 15 digits honi chahiye." });
+      setStatus({ type: "error", message: "Contact phone me exactly 10 digits honi chahiye." });
       return;
     }
 

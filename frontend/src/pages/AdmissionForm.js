@@ -114,7 +114,7 @@ function AdmissionForm() {
     }
 
     if (!isValidPhone(form.parent_phone)) {
-      setStatus({ type: "error", message: "Parent phone me 10 se 15 digits honi chahiye." });
+      setStatus({ type: "error", message: "Parent phone me exactly 10 digits honi chahiye." });
       return;
     }
 
