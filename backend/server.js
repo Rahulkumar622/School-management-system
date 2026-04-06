@@ -222,6 +222,51 @@ const normalizeDayOfWeek = (value) => {
   return normalized;
 };
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\d{10,15}$/;
+const SCHOOL_CODE_REGEX = /^[A-Z0-9-]{2,20}$/;
+const SECTION_REGEX = /^[A-Z0-9]{1,10}$/;
+const ROLL_NUMBER_REGEX = /^\d{1,6}$/;
+const TIME_REGEX = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+
+const normalizeSingleLineText = (value) => normalizeIdentifier(value).replace(/\s+/g, " ");
+
+const normalizeName = (value) => normalizeSingleLineText(value);
+
+const normalizePhone = (value) => String(value || "").replace(/\D/g, "");
+
+const normalizeSection = (value) => normalizeSingleLineText(value).toUpperCase();
+
+const isValidEmail = (value) => EMAIL_REGEX.test(normalizeEmail(value));
+
+const isValidPhone = (value) => PHONE_REGEX.test(normalizePhone(value));
+
+const isValidSchoolCode = (value) => SCHOOL_CODE_REGEX.test(normalizeStudentCode(value));
+
+const isValidRollNumber = (value) => ROLL_NUMBER_REGEX.test(normalizeIdentifier(value));
+
+const isValidDateInput = (value) => {
+  const normalized = normalizeIdentifier(value);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return false;
+  }
+
+  const parsedDate = new Date(`${normalized}T00:00:00Z`);
+  return !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === normalized;
+};
+
+const isValidTimeInput = (value) => TIME_REGEX.test(normalizeIdentifier(value));
+
+const isPositiveInteger = (value) => Number.isInteger(Number(value)) && Number(value) > 0;
+
+const isNonNegativeNumber = (value) => Number.isFinite(Number(value)) && Number(value) >= 0;
+
+const validateLength = (value, min, max) => {
+  const normalized = normalizeSingleLineText(value);
+  return normalized.length >= min && normalized.length <= max;
+};
+
 const scryptAsync = (password, salt) =>
   new Promise((resolve, reject) => {
     crypto.scrypt(password, salt, 32, (error, derivedKey) => {
@@ -1322,7 +1367,51 @@ app.post(
       contact_phone = "",
       address = "",
     } = req.body;
-    const normalizedCode = code.trim().toUpperCase();
+    const normalizedName = normalizeName(name);
+    const normalizedCode = normalizeStudentCode(code);
+    const normalizedContactEmail = normalizeEmail(contact_email);
+    const normalizedContactPhone = normalizePhone(contact_phone);
+
+    if (!validateLength(normalizedName, 2, 120)) {
+      res.status(400).json({
+        success: false,
+        message: "School name must be between 2 and 120 characters",
+      });
+      return;
+    }
+
+    if (!isValidSchoolCode(normalizedCode)) {
+      res.status(400).json({
+        success: false,
+        message: "School code must be 2 to 20 characters using letters, numbers, or hyphen",
+      });
+      return;
+    }
+
+    if (!isPositiveInteger(max_students) || Number(max_students) > 100000) {
+      res.status(400).json({
+        success: false,
+        message: "Student limit must be a whole number between 1 and 100000",
+      });
+      return;
+    }
+
+    if (normalizedContactEmail && !isValidEmail(normalizedContactEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid contact email address",
+      });
+      return;
+    }
+
+    if (normalizedContactPhone && !isValidPhone(normalizedContactPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "Contact phone must contain 10 to 15 digits",
+      });
+      return;
+    }
+
     const existingSchool = await getSchoolByCode(normalizedCode);
 
     if (existingSchool) {
@@ -1344,12 +1433,12 @@ app.post(
         (name, code, board, plan_name, subscription_status, max_students, subscription_start_date, subscription_end_date, software_fee, software_paid_amount, software_due_amount, software_fee_status, last_payment_date, contact_email, contact_phone, address)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        name.trim(),
+        normalizedName,
         normalizedCode,
-        board.trim(),
+        normalizeSingleLineText(board),
         "Free",
         String(subscription_status || "active").trim().toLowerCase(),
-        Number(max_students) || 500,
+        Number(max_students),
         new Date().toISOString().slice(0, 10),
         null,
         billing.software_fee,
@@ -1357,9 +1446,9 @@ app.post(
         billing.software_due_amount,
         billing.software_fee_status,
         billing.last_payment_date,
-        contact_email.trim(),
-        contact_phone.trim(),
-        address.trim(),
+        normalizedContactEmail,
+        normalizedContactPhone,
+        normalizeSingleLineText(address),
       ]
     );
 
@@ -1394,7 +1483,51 @@ app.patch(
       return;
     }
 
-    const normalizedCode = req.body.code.trim().toUpperCase();
+    const normalizedName = normalizeName(req.body.name);
+    const normalizedCode = normalizeStudentCode(req.body.code);
+    const normalizedContactEmail = normalizeEmail(req.body.contact_email);
+    const normalizedContactPhone = normalizePhone(req.body.contact_phone);
+
+    if (!validateLength(normalizedName, 2, 120)) {
+      res.status(400).json({
+        success: false,
+        message: "School name must be between 2 and 120 characters",
+      });
+      return;
+    }
+
+    if (!isValidSchoolCode(normalizedCode)) {
+      res.status(400).json({
+        success: false,
+        message: "School code must be 2 to 20 characters using letters, numbers, or hyphen",
+      });
+      return;
+    }
+
+    if (!isPositiveInteger(req.body.max_students) || Number(req.body.max_students) > 100000) {
+      res.status(400).json({
+        success: false,
+        message: "Student limit must be a whole number between 1 and 100000",
+      });
+      return;
+    }
+
+    if (normalizedContactEmail && !isValidEmail(normalizedContactEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid contact email address",
+      });
+      return;
+    }
+
+    if (normalizedContactPhone && !isValidPhone(normalizedContactPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "Contact phone must contain 10 to 15 digits",
+      });
+      return;
+    }
+
     const existingSchool = await getSchoolByCode(normalizedCode);
 
     if (existingSchool && Number(existingSchool.id) !== Number(school.id)) {
@@ -1425,19 +1558,19 @@ app.patch(
          address = ?
        WHERE id = ?`,
       [
-        req.body.name.trim(),
+        normalizedName,
         normalizedCode,
-        (req.body.board || "").trim(),
+        normalizeSingleLineText(req.body.board),
         String(req.body.subscription_status || "active").trim().toLowerCase(),
-        Number(req.body.max_students) || 500,
+        Number(req.body.max_students),
         billing.software_fee,
         billing.software_paid_amount,
         billing.software_due_amount,
         billing.software_fee_status,
         billing.last_payment_date,
-        (req.body.contact_email || "").trim(),
-        (req.body.contact_phone || "").trim(),
-        (req.body.address || "").trim(),
+        normalizedContactEmail,
+        normalizedContactPhone,
+        normalizeSingleLineText(req.body.address),
         school.id,
       ]
     );
@@ -1488,6 +1621,8 @@ app.post(
     const requestedRole = String(req.body.role || "super_admin").trim().toLowerCase();
     const role = requestedRole === "principal" ? "school_admin" : requestedRole;
     const { schoolCode = "", email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedSchoolCode = normalizeStudentCode(schoolCode);
     const missingFields = requireFields(req.body, ["email", "password"]);
 
     if (missingFields.length > 0) {
@@ -1499,7 +1634,7 @@ app.post(
     }
 
     if (role === "super_admin") {
-      if (email.trim() === SUPER_ADMIN_EMAIL && password === SUPER_ADMIN_PASSWORD) {
+      if (normalizedEmail === normalizeEmail(SUPER_ADMIN_EMAIL) && password === SUPER_ADMIN_PASSWORD) {
         const token = generateAuthToken("super-admin", "super_admin");
         res.json({
           success: true,
@@ -1529,6 +1664,22 @@ app.post(
       return;
     }
 
+    if (!isValidSchoolCode(normalizedSchoolCode)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid school code",
+      });
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid email address",
+      });
+      return;
+    }
+
     const admins = await query(
       `SELECT
          admin_users.*,
@@ -1543,7 +1694,7 @@ app.post(
          AND schools.code = ?
          AND admin_users.email = ?
        LIMIT 1`,
-      [schoolCode.trim().toUpperCase(), email.trim()]
+      [normalizedSchoolCode, normalizedEmail]
     );
 
     if (admins.length === 0 || !(await verifyPassword(admins[0].password, password))) {
@@ -1595,13 +1746,56 @@ app.post(
       return;
     }
 
+    const normalizedName = normalizeName(req.body.name);
+    const normalizedEmail = normalizeEmail(req.body.email);
+
+    if (!validateLength(normalizedName, 2, 80)) {
+      res.status(400).json({
+        success: false,
+        message: "Admin name must be between 2 and 80 characters",
+      });
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid admin email address",
+      });
+      return;
+    }
+
+    if (!validateLength(req.body.password, 4, 64)) {
+      res.status(400).json({
+        success: false,
+        message: "Admin password must be between 4 and 64 characters",
+      });
+      return;
+    }
+
+    const existingAdmin = await query(
+      `SELECT id
+       FROM admin_users
+       WHERE school_id = ? AND LOWER(TRIM(email)) = ?
+       LIMIT 1`,
+      [school.id, normalizedEmail]
+    );
+
+    if (existingAdmin.length > 0) {
+      res.status(409).json({
+        success: false,
+        message: "A school admin with this email already exists",
+      });
+      return;
+    }
+
     await query(
       `INSERT INTO admin_users (school_id, name, email, password, role)
        VALUES (?, ?, ?, ?, 'school_admin')`,
       [
         school.id,
-        req.body.name.trim(),
-        req.body.email.trim(),
+        normalizedName,
+        normalizedEmail,
         await hashPassword(req.body.password),
       ]
     );
@@ -1772,6 +1966,11 @@ app.post(
       password,
       annual_fee,
     } = req.body;
+    const normalizedName = normalizeName(name);
+    const normalizedClassName = normalizeClassName(className);
+    const normalizedSection = normalizeSection(section);
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedRollNo = normalizeIdentifier(roll_no);
 
     const school = await getSchoolById(school_id);
 
@@ -1784,12 +1983,69 @@ app.post(
     }
 
     const annualFee = Number(annual_fee);
+
+    if (!validateLength(normalizedName, 2, 80)) {
+      res.status(400).json({
+        success: false,
+        message: "Student name must be between 2 and 80 characters",
+      });
+      return;
+    }
+
+    if (!validateLength(normalizedClassName, 1, 30)) {
+      res.status(400).json({
+        success: false,
+        message: "Class is required and must be under 30 characters",
+      });
+      return;
+    }
+
+    if (!SECTION_REGEX.test(normalizedSection)) {
+      res.status(400).json({
+        success: false,
+        message: "Section must be 1 to 10 letters or numbers",
+      });
+      return;
+    }
+
+    if (!isValidRollNumber(normalizedRollNo)) {
+      res.status(400).json({
+        success: false,
+        message: "Roll number must be a positive whole number",
+      });
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid student email address",
+      });
+      return;
+    }
+
+    if (!validateLength(password, 4, 64)) {
+      res.status(400).json({
+        success: false,
+        message: "Student password must be between 4 and 64 characters",
+      });
+      return;
+    }
+
+    if (!isNonNegativeNumber(annualFee)) {
+      res.status(400).json({
+        success: false,
+        message: "Annual fee must be 0 or more",
+      });
+      return;
+    }
+
     const existingStudent = await query(
       `SELECT id
        FROM students
        WHERE school_id = ? AND LOWER(TRIM(email)) = ?
        LIMIT 1`,
-      [school.id, normalizeEmail(email)]
+      [school.id, normalizedEmail]
     );
 
     if (existingStudent.length > 0) {
@@ -1801,7 +2057,7 @@ app.post(
     }
 
     const studentCode = await generateStudentCode(school);
-    await ensureClassCatalogEntry(school.id, school.code, className);
+    await ensureClassCatalogEntry(school.id, school.code, normalizedClassName);
 
     const insertResult = await query(
       `INSERT INTO students
@@ -1811,11 +2067,11 @@ app.post(
         school.id,
         req.body.parent_id || null,
         studentCode,
-        name.trim(),
-        className.trim(),
-        section.trim(),
-        roll_no,
-        email.trim(),
+        normalizedName,
+        normalizedClassName,
+        normalizedSection,
+        normalizedRollNo,
+        normalizedEmail,
         await hashPassword(password),
         annualFee,
         annualFee,
@@ -1827,8 +2083,8 @@ app.post(
       studentId: insertResult.insertId,
       schoolId: school.id,
       schoolCode: school.code,
-      studentName: name,
-      className,
+      studentName: normalizedName,
+      className: normalizedClassName,
       parentId: req.body.parent_id || null,
       notes: "Auto-created from Add Student flow",
     });
@@ -1867,8 +2123,10 @@ app.post(
     }
 
     const { name, email, password } = req.body;
+    const normalizedName = normalizeName(name);
+    const normalizedEmail = normalizeEmail(email);
     const assignedClass = normalizeClassName(req.body.assigned_class);
-    const assignedSubject = normalizeIdentifier(req.body.assigned_subject);
+    const assignedSubject = normalizeSingleLineText(req.body.assigned_subject);
     const school = await resolveSchoolFromPayload(req.body);
 
     if (!school) {
@@ -1879,12 +2137,52 @@ app.post(
       return;
     }
 
+    if (!validateLength(normalizedName, 2, 80)) {
+      res.status(400).json({
+        success: false,
+        message: "Teacher name must be between 2 and 80 characters",
+      });
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid teacher email address",
+      });
+      return;
+    }
+
+    if (!validateLength(password, 4, 64)) {
+      res.status(400).json({
+        success: false,
+        message: "Teacher password must be between 4 and 64 characters",
+      });
+      return;
+    }
+
+    if (assignedClass && !validateLength(assignedClass, 1, 30)) {
+      res.status(400).json({
+        success: false,
+        message: "Assigned class must be under 30 characters",
+      });
+      return;
+    }
+
+    if (assignedSubject && !validateLength(assignedSubject, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Assigned subject must be between 2 and 60 characters",
+      });
+      return;
+    }
+
     const existingTeacher = await query(
       `SELECT id
        FROM teachers
        WHERE school_id = ? AND LOWER(TRIM(email)) = ?
        LIMIT 1`,
-      [school.id, normalizeEmail(email)]
+      [school.id, normalizedEmail]
     );
 
     if (existingTeacher.length > 0) {
@@ -1904,8 +2202,8 @@ app.post(
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         school.id,
-        name.trim(),
-        email.trim(),
+        normalizedName,
+        normalizedEmail,
         await hashPassword(password),
         assignedClass,
         assignedSubject,
@@ -1915,7 +2213,7 @@ app.post(
     await createAuditLog({
       schoolId: school.id,
       userName: req.body.created_by || req.body.createdBy || "School Admin",
-      action: `Created teacher ${name.trim()}`,
+      action: `Created teacher ${normalizedName}`,
       module: "Teachers",
     });
 
@@ -2141,6 +2439,14 @@ app.post(
       return;
     }
 
+    if (!validateLength(className, 1, 30)) {
+      res.status(400).json({
+        success: false,
+        message: "Class name must be under 30 characters",
+      });
+      return;
+    }
+
     await ensureClassCatalogEntry(school.id, school.code, className);
 
     await createAuditLog({
@@ -2266,6 +2572,38 @@ app.post(
       return;
     }
 
+    if (!validateLength(className, 1, 30)) {
+      res.status(400).json({
+        success: false,
+        message: "Class name must be under 30 characters",
+      });
+      return;
+    }
+
+    if (!isValidTimeInput(req.body.start_time) || !isValidTimeInput(req.body.end_time)) {
+      res.status(400).json({
+        success: false,
+        message: "Start time and end time must be valid HH:MM values",
+      });
+      return;
+    }
+
+    if (normalizeIdentifier(req.body.start_time) >= normalizeIdentifier(req.body.end_time)) {
+      res.status(400).json({
+        success: false,
+        message: "End time must be later than start time",
+      });
+      return;
+    }
+
+    if (!validateLength(req.body.subject_name, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Subject name must be between 2 and 60 characters",
+      });
+      return;
+    }
+
     await query(
       `INSERT INTO timetables
         (school_id, class_name, day_of_week, start_time, end_time, subject_name, teacher_name, room_no)
@@ -2324,6 +2662,38 @@ app.patch(
       res.status(400).json({
         success: false,
         message: "Class, day, time, and subject are required",
+      });
+      return;
+    }
+
+    if (!validateLength(nextClass, 1, 30)) {
+      res.status(400).json({
+        success: false,
+        message: "Class name must be under 30 characters",
+      });
+      return;
+    }
+
+    if (!isValidTimeInput(nextStart) || !isValidTimeInput(nextEnd)) {
+      res.status(400).json({
+        success: false,
+        message: "Start time and end time must be valid HH:MM values",
+      });
+      return;
+    }
+
+    if (nextStart >= nextEnd) {
+      res.status(400).json({
+        success: false,
+        message: "End time must be later than start time",
+      });
+      return;
+    }
+
+    if (!validateLength(nextSubject, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Subject name must be between 2 and 60 characters",
       });
       return;
     }
@@ -2458,11 +2828,29 @@ app.post(
 
     const audience = normalizeAudience(req.body.audience);
     const className = audience === "class" ? normalizeClassName(req.body.class_name) : "";
+    const title = normalizeSingleLineText(req.body.title);
+    const message = normalizeIdentifier(req.body.message).trim();
 
     if (audience === "class" && !className) {
       res.status(400).json({
         success: false,
         message: "class_name is required when audience is class",
+      });
+      return;
+    }
+
+    if (!validateLength(title, 2, 120)) {
+      res.status(400).json({
+        success: false,
+        message: "Notification title must be between 2 and 120 characters",
+      });
+      return;
+    }
+
+    if (message.length < 2 || message.length > 1000) {
+      res.status(400).json({
+        success: false,
+        message: "Notification message must be between 2 and 1000 characters",
       });
       return;
     }
@@ -2473,8 +2861,8 @@ app.post(
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         school.id,
-        normalizeIdentifier(req.body.title),
-        normalizeIdentifier(req.body.message),
+        title,
+        message,
         audience,
         className,
         normalizeIdentifier(req.body.created_by || req.body.createdBy),
@@ -2529,6 +2917,22 @@ app.patch(
       res.status(400).json({
         success: false,
         message: "class_name is required when audience is class",
+      });
+      return;
+    }
+
+    if (!validateLength(nextTitle, 2, 120)) {
+      res.status(400).json({
+        success: false,
+        message: "Notification title must be between 2 and 120 characters",
+      });
+      return;
+    }
+
+    if (nextMessage.length < 2 || nextMessage.length > 1000) {
+      res.status(400).json({
+        success: false,
+        message: "Notification message must be between 2 and 1000 characters",
       });
       return;
     }
@@ -2676,6 +3080,22 @@ app.post(
     const roleName = normalizeIdentifier(req.body.name);
     const roleDescription = normalizeIdentifier(req.body.description);
     const requestedPermissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+
+    if (!validateLength(roleName, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Role name must be between 2 and 60 characters",
+      });
+      return;
+    }
+
+    if (roleDescription.length > 250) {
+      res.status(400).json({
+        success: false,
+        message: "Role description must be 250 characters or fewer",
+      });
+      return;
+    }
 
     const existingRoles = await query(
       "SELECT id FROM roles WHERE school_id = ? AND name = ? LIMIT 1",
@@ -2866,6 +3286,22 @@ app.post(
       return;
     }
 
+    if (!isValidEmail(req.body.to)) {
+      res.status(400).json({
+        success: false,
+        message: "Recipient email address is invalid",
+      });
+      return;
+    }
+
+    if (!validateLength(req.body.subject, 2, 150) || !validateLength(req.body.body, 2, 5000)) {
+      res.status(400).json({
+        success: false,
+        message: "Email subject or body is outside the allowed length",
+      });
+      return;
+    }
+
     const configured = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
     res.json({
@@ -2887,6 +3323,22 @@ app.post(
       res.status(400).json({
         success: false,
         message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    if (!isValidPhone(req.body.to)) {
+      res.status(400).json({
+        success: false,
+        message: "Recipient phone number must contain 10 to 15 digits",
+      });
+      return;
+    }
+
+    if (!validateLength(req.body.message, 2, 500)) {
+      res.status(400).json({
+        success: false,
+        message: "SMS message must be between 2 and 500 characters",
       });
       return;
     }
@@ -2994,6 +3446,17 @@ app.post(
     }
 
     const { schoolCode, email, password } = req.body;
+    const normalizedSchoolCode = normalizeStudentCode(schoolCode);
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!isValidSchoolCode(normalizedSchoolCode) || !isValidEmail(normalizedEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid school code and email address",
+      });
+      return;
+    }
+
     const teachers = await query(
       `SELECT
          teachers.*,
@@ -3006,7 +3469,7 @@ app.post(
        JOIN schools ON schools.id = teachers.school_id
        WHERE schools.code = ? AND teachers.email = ?
        LIMIT 1`,
-      [schoolCode.trim().toUpperCase(), email.trim()]
+      [normalizedSchoolCode, normalizedEmail]
     );
 
     if (teachers.length === 0 || !(await verifyPassword(teachers[0].password, password))) {
@@ -3050,6 +3513,17 @@ app.post(
       return;
     }
 
+    const normalizedSchoolCode = normalizeStudentCode(req.body.schoolCode);
+    const normalizedEmail = normalizeEmail(req.body.email);
+
+    if (!isValidSchoolCode(normalizedSchoolCode) || !isValidEmail(normalizedEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid school code and email address",
+      });
+      return;
+    }
+
     const parents = await query(
       `SELECT
          parents.*,
@@ -3062,7 +3536,7 @@ app.post(
        JOIN schools ON schools.id = parents.school_id
        WHERE schools.code = ? AND parents.email = ?
        LIMIT 1`,
-      [req.body.schoolCode.trim().toUpperCase(), req.body.email.trim()]
+      [normalizedSchoolCode, normalizedEmail]
     );
 
     if (parents.length === 0 || !(await verifyPassword(parents[0].password, req.body.password))) {
@@ -3120,6 +3594,78 @@ app.post(
       return;
     }
 
+    const normalizedStudentName = normalizeName(req.body.student_name);
+    const normalizedClassName = normalizeClassName(req.body.class_name);
+    const normalizedParentName = normalizeName(req.body.parent_name);
+    const normalizedParentEmail = normalizeEmail(req.body.parent_email);
+    const normalizedParentPhone = normalizePhone(req.body.parent_phone);
+    const normalizedPreviousSchool = normalizeSingleLineText(req.body.previous_school);
+    const normalizedNotes = normalizeIdentifier(req.body.notes).trim();
+
+    if (!validateLength(normalizedStudentName, 2, 80)) {
+      res.status(400).json({
+        success: false,
+        message: "Student name must be between 2 and 80 characters",
+      });
+      return;
+    }
+
+    if (!validateLength(normalizedClassName, 1, 30)) {
+      res.status(400).json({
+        success: false,
+        message: "Applying class is required and must be under 30 characters",
+      });
+      return;
+    }
+
+    if (!validateLength(normalizedParentName, 2, 80)) {
+      res.status(400).json({
+        success: false,
+        message: "Parent name must be between 2 and 80 characters",
+      });
+      return;
+    }
+
+    if (!isValidEmail(normalizedParentEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid parent email address",
+      });
+      return;
+    }
+
+    if (!isValidPhone(normalizedParentPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "Parent phone must contain 10 to 15 digits",
+      });
+      return;
+    }
+
+    if (!validateLength(req.body.parent_password, 4, 64)) {
+      res.status(400).json({
+        success: false,
+        message: "Parent portal password must be between 4 and 64 characters",
+      });
+      return;
+    }
+
+    if (normalizedPreviousSchool && !validateLength(normalizedPreviousSchool, 2, 120)) {
+      res.status(400).json({
+        success: false,
+        message: "Previous school must be under 120 characters",
+      });
+      return;
+    }
+
+    if (normalizedNotes && normalizedNotes.length > 500) {
+      res.status(400).json({
+        success: false,
+        message: "Notes must be 500 characters or fewer",
+      });
+      return;
+    }
+
     const school = await resolveSchoolFromPayload(req.body);
     if (!school) {
       res.status(404).json({
@@ -3132,7 +3678,7 @@ app.post(
     let parentId = null;
     const existingParents = await query(
       "SELECT * FROM parents WHERE school_id = ? AND email = ? LIMIT 1",
-      [school.id, req.body.parent_email.trim()]
+      [school.id, normalizedParentEmail]
     );
 
     if (existingParents.length > 0) {
@@ -3143,9 +3689,9 @@ app.post(
          VALUES (?, ?, ?, ?, ?)`,
         [
           school.id,
-          req.body.parent_name.trim(),
-          req.body.parent_email.trim(),
-          req.body.parent_phone.trim(),
+          normalizedParentName,
+          normalizedParentEmail,
+          normalizedParentPhone,
           await hashPassword(req.body.parent_password),
         ]
       );
@@ -3161,15 +3707,15 @@ app.post(
         school.id,
         school.code,
         parentId,
-        req.body.student_name.trim(),
-        req.body.class_name.trim(),
-        (req.body.previous_school || "").trim(),
+        normalizedStudentName,
+        normalizedClassName,
+        normalizedPreviousSchool,
         referenceNumber,
-        (req.body.notes || "").trim(),
+        normalizedNotes,
       ]
     );
 
-    await ensureClassCatalogEntry(school.id, school.code, req.body.class_name);
+    await ensureClassCatalogEntry(school.id, school.code, normalizedClassName);
 
     res.status(201).json({
       success: true,
@@ -3389,6 +3935,33 @@ app.post(
     }
 
     const { student_id, subject, date, status } = req.body;
+    const normalizedSubject = normalizeSingleLineText(subject);
+    const normalizedStatus = normalizeSingleLineText(status);
+
+    if (!validateLength(normalizedSubject, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Subject must be between 2 and 60 characters",
+      });
+      return;
+    }
+
+    if (!isValidDateInput(date)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid attendance date",
+      });
+      return;
+    }
+
+    if (!["Present", "Absent"].includes(normalizedStatus)) {
+      res.status(400).json({
+        success: false,
+        message: "Attendance status must be Present or Absent",
+      });
+      return;
+    }
+
     const student = await findStudentByIdentifier(student_id);
 
     if (!student) {
@@ -3402,7 +3975,7 @@ app.post(
     await query(
       `INSERT INTO attendance (school_id, student_id, student_name, subject, date, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [student.school_id, student.id, student.name, subject.trim(), date, status]
+      [student.school_id, student.id, student.name, normalizedSubject, date, normalizedStatus]
     );
 
     res.status(201).json({
@@ -3453,6 +4026,34 @@ app.post(
     }
 
     const { student_id, subject, marks, year } = req.body;
+    const normalizedSubject = normalizeSingleLineText(subject);
+    const numericMarks = Number(marks);
+    const numericYear = Number(year);
+
+    if (!validateLength(normalizedSubject, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Subject must be between 2 and 60 characters",
+      });
+      return;
+    }
+
+    if (!Number.isFinite(numericMarks) || numericMarks < 0 || numericMarks > 100) {
+      res.status(400).json({
+        success: false,
+        message: "Marks must be between 0 and 100",
+      });
+      return;
+    }
+
+    if (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2100) {
+      res.status(400).json({
+        success: false,
+        message: "Year must be a valid 4 digit year",
+      });
+      return;
+    }
+
     const student = await findStudentByIdentifier(student_id);
 
     if (!student) {
@@ -3466,7 +4067,7 @@ app.post(
     await query(
       `INSERT INTO marks (school_id, student_id, student_name, subject, marks, year)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [student.school_id, student.id, student.name, subject.trim(), marks, year]
+      [student.school_id, student.id, student.name, normalizedSubject, numericMarks, numericYear]
     );
 
     res.status(201).json({
@@ -4034,11 +4635,29 @@ app.post(
     }
 
     const amount = Number(req.body.amount);
+    const paymentMethod = normalizeSingleLineText(req.body.payment_method || "dummy-upi");
+    const paymentNotes = normalizeIdentifier(req.body.notes || "Dummy payment through student portal").trim();
 
     if (!Number.isFinite(amount) || amount <= 0) {
       res.status(400).json({
         success: false,
         message: "Enter a valid payment amount",
+      });
+      return;
+    }
+
+    if (paymentMethod && !validateLength(paymentMethod, 2, 40)) {
+      res.status(400).json({
+        success: false,
+        message: "Payment method must be between 2 and 40 characters",
+      });
+      return;
+    }
+
+    if (paymentNotes.length > 250) {
+      res.status(400).json({
+        success: false,
+        message: "Payment notes must be 250 characters or fewer",
       });
       return;
     }
@@ -4074,7 +4693,6 @@ app.post(
     const nextPaid = Number(student.paid_fee || 0) + paymentAmount;
     const nextDue = Math.max(currentDue - paymentAmount, 0);
     const feeStatus = nextDue === 0 ? "paid" : nextPaid > 0 ? "partial" : "unpaid";
-    const paymentMethod = (req.body.payment_method || "dummy-upi").trim();
     const transactionRef = `DUMMY-${Date.now()}-${student.id}`;
 
     await applyPaymentToInstallments(student.id, student.school_id, paymentAmount);
@@ -4090,7 +4708,7 @@ app.post(
         paymentAmount,
         paymentMethod,
         transactionRef,
-        (req.body.notes || "Dummy payment through student portal").trim(),
+        paymentNotes,
       ]
     );
 
@@ -4147,6 +4765,7 @@ app.post(
     }
 
     const entries = Array.isArray(req.body.entries) ? req.body.entries : [];
+    const normalizedSubject = normalizeSingleLineText(req.body.subject);
 
     if (entries.length === 0) {
       res.status(400).json({
@@ -4156,11 +4775,37 @@ app.post(
       return;
     }
 
+    if (!validateLength(normalizedSubject, 2, 60)) {
+      res.status(400).json({
+        success: false,
+        message: "Subject must be between 2 and 60 characters",
+      });
+      return;
+    }
+
+    if (!isValidDateInput(req.body.date)) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a valid attendance date",
+      });
+      return;
+    }
+
     for (const entry of entries) {
-      if (!entry.student_id || !entry.status) {
+      const normalizedStatus = normalizeSingleLineText(entry.status);
+
+      if (!entry.student_id || !normalizedStatus) {
         res.status(400).json({
           success: false,
           message: "Each attendance row must include student_id and status",
+        });
+        return;
+      }
+
+      if (!["Present", "Absent"].includes(normalizedStatus)) {
+        res.status(400).json({
+          success: false,
+          message: "Attendance status must be Present or Absent for every row",
         });
         return;
       }
@@ -4179,7 +4824,7 @@ app.post(
       `SELECT id, student_id
        FROM attendance
        WHERE subject = ? AND date = ? AND student_id IN (?)`,
-      [req.body.subject.trim(), req.body.date, studentIds]
+      [normalizedSubject, req.body.date, studentIds]
     );
 
     const existingMap = new Map(existingRows.map((row) => [String(row.student_id), row.id]));
@@ -4200,16 +4845,16 @@ app.post(
           `UPDATE attendance
            SET status = ?
            WHERE id = ?`,
-          [entry.status, existingMap.get(String(entry.student_id))]
+          [normalizeSingleLineText(entry.status), existingMap.get(String(entry.student_id))]
         );
       } else {
         insertValues.push([
           student.school_id,
           student.id,
           student.name,
-          req.body.subject.trim(),
+          normalizedSubject,
           req.body.date,
-          entry.status,
+          normalizeSingleLineText(entry.status),
         ]);
       }
     }
@@ -4225,7 +4870,7 @@ app.post(
     await createAuditLog({
       schoolId: students[0]?.school_id || null,
       userName: req.body.updated_by || req.body.updatedBy || "Teacher",
-      action: `Saved bulk attendance for ${req.body.subject.trim()} on ${req.body.date}`,
+      action: `Saved bulk attendance for ${normalizedSubject} on ${req.body.date}`,
       module: "Attendance",
     });
 

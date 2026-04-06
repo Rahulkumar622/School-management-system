@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import api from "../api";
+import { hasLengthBetween, normalizeText } from "../utils/validation";
 import "../styles/appShell.css";
 
 function MarkAttendance() {
@@ -40,13 +41,18 @@ function MarkAttendance() {
       return;
     }
 
+    if (!hasLengthBetween(subject, 2, 60)) {
+      setStatus({ type: "error", message: "Subject 2 se 60 characters ke beech hona chahiye." });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatus({ type: "", message: "" });
 
     try {
       const { data } = await api.post("/mark-attendance", {
         student_id: studentId,
-        subject: subject.trim(),
+        subject: normalizeText(subject),
         date: new Date().toISOString().slice(0, 10),
         status: statusValue,
       });

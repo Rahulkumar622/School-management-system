@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 
 import api from "../api";
+import {
+  hasLengthBetween,
+  isValidEmail,
+  isValidPhone,
+  normalizeEmail,
+  normalizePhone,
+  normalizeText,
+} from "../utils/validation";
 import "../styles/appShell.css";
 
 const initialForm = {
@@ -80,8 +88,62 @@ function AdmissionForm() {
   };
 
   const submitAdmission = async () => {
+    if (!form.school_id) {
+      setStatus({ type: "error", message: "School select karo." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.student_name, 2, 80)) {
+      setStatus({ type: "error", message: "Student name 2 se 80 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.class_name, 1, 30)) {
+      setStatus({ type: "error", message: "Applying class required hai." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.parent_name, 2, 80)) {
+      setStatus({ type: "error", message: "Parent name 2 se 80 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isValidEmail(form.parent_email)) {
+      setStatus({ type: "error", message: "Valid parent email enter karo." });
+      return;
+    }
+
+    if (!isValidPhone(form.parent_phone)) {
+      setStatus({ type: "error", message: "Parent phone me 10 se 15 digits honi chahiye." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.parent_password, 4, 64)) {
+      setStatus({ type: "error", message: "Parent portal password 4 se 64 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (form.previous_school && !hasLengthBetween(form.previous_school, 2, 120)) {
+      setStatus({ type: "error", message: "Previous school 120 characters se chhota hona chahiye." });
+      return;
+    }
+
+    if (form.notes && normalizeText(form.notes).length > 500) {
+      setStatus({ type: "error", message: "Notes 500 characters se zyada nahi hone chahiye." });
+      return;
+    }
+
     try {
-      const { data } = await api.post("/admissions", form);
+      const { data } = await api.post("/admissions", {
+        ...form,
+        student_name: normalizeText(form.student_name),
+        class_name: normalizeText(form.class_name),
+        previous_school: normalizeText(form.previous_school),
+        parent_name: normalizeText(form.parent_name),
+        parent_email: normalizeEmail(form.parent_email),
+        parent_phone: normalizePhone(form.parent_phone),
+        notes: form.notes.trim(),
+      });
       setStatus({ type: "success", message: data.message });
       setReferenceNumber(data.reference_number || "");
       setForm(initialForm);

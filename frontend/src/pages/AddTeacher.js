@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 
 import api from "../api";
 import { getAdminSession } from "../session";
+import {
+  hasLengthBetween,
+  isValidEmail,
+  normalizeEmail,
+  normalizeText,
+} from "../utils/validation";
 import "../styles/appShell.css";
 
 const initialForm = {
@@ -87,14 +93,35 @@ function AddTeacher() {
       return;
     }
 
+    if (!hasLengthBetween(form.name, 2, 80)) {
+      setStatus({ type: "error", message: "Teacher name 2 se 80 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isValidEmail(form.email)) {
+      setStatus({ type: "error", message: "Valid teacher email enter karo." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.password, 4, 64)) {
+      setStatus({ type: "error", message: "Password 4 se 64 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (form.assigned_subject && !hasLengthBetween(form.assigned_subject, 2, 60)) {
+      setStatus({ type: "error", message: "Assigned subject 2 se 60 characters ke beech hona chahiye." });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatus({ type: "", message: "" });
 
     try {
       const { data } = await api.post("/add-teacher", {
         ...form,
-        email: form.email.trim(),
-        assigned_subject: form.assigned_subject.trim(),
+        name: normalizeText(form.name),
+        email: normalizeEmail(form.email),
+        assigned_subject: normalizeText(form.assigned_subject),
       });
 
       setForm(createInitialForm(lockedSchoolId));

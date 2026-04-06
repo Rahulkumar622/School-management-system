@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 
 import api from "../api";
 import { getAdminSession } from "../session";
+import {
+  hasLengthBetween,
+  isNonNegativeNumber,
+  isValidEmail,
+  isValidPhone,
+  isValidSchoolCode,
+  normalizeEmail,
+  normalizePhone,
+  normalizeSchoolCode,
+  normalizeText,
+} from "../utils/validation";
 import "../styles/appShell.css";
 
 const createInitialSchoolForm = () => ({
@@ -135,17 +146,52 @@ function SchoolManagement() {
   };
 
   const handleSchoolSubmit = async () => {
+    if (!hasLengthBetween(schoolForm.name, 2, 120)) {
+      setStatus({ type: "error", message: "School name 2 se 120 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isValidSchoolCode(schoolForm.code)) {
+      setStatus({ type: "error", message: "School code valid format me enter karo." });
+      return;
+    }
+
+    if (!Number.isInteger(Number(schoolForm.max_students)) || Number(schoolForm.max_students) <= 0) {
+      setStatus({ type: "error", message: "Student limit positive whole number hona chahiye." });
+      return;
+    }
+
+    if (!isNonNegativeNumber(schoolForm.software_fee) || !isNonNegativeNumber(schoolForm.software_paid_amount)) {
+      setStatus({ type: "error", message: "Software fee aur paid amount 0 ya usse zyada hone chahiye." });
+      return;
+    }
+
+    if (schoolForm.contact_email && !isValidEmail(schoolForm.contact_email)) {
+      setStatus({ type: "error", message: "Valid contact email enter karo." });
+      return;
+    }
+
+    if (schoolForm.contact_phone && !isValidPhone(schoolForm.contact_phone)) {
+      setStatus({ type: "error", message: "Contact phone me 10 se 15 digits honi chahiye." });
+      return;
+    }
+
     setIsSavingSchool(true);
     setStatus({ type: "", message: "" });
 
     try {
       const payload = {
         ...schoolForm,
-        code: schoolForm.code.trim().toUpperCase(),
-        max_students: Number(schoolForm.max_students) || 500,
+        name: normalizeText(schoolForm.name),
+        code: normalizeSchoolCode(schoolForm.code),
+        board: normalizeText(schoolForm.board),
+        max_students: Number(schoolForm.max_students),
         software_fee: Number(schoolForm.software_fee || 0),
         software_paid_amount: Number(schoolForm.software_paid_amount || 0),
         last_payment_date: schoolForm.last_payment_date || null,
+        contact_email: normalizeEmail(schoolForm.contact_email),
+        contact_phone: normalizePhone(schoolForm.contact_phone),
+        address: normalizeText(schoolForm.address),
       };
 
       const { data } = editingSchoolId
@@ -207,8 +253,32 @@ function SchoolManagement() {
   };
 
   const handleCreateAdmin = async () => {
+    if (!adminForm.school_id) {
+      setStatus({ type: "error", message: "School select karo." });
+      return;
+    }
+
+    if (!hasLengthBetween(adminForm.name, 2, 80)) {
+      setStatus({ type: "error", message: "Admin name 2 se 80 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isValidEmail(adminForm.email)) {
+      setStatus({ type: "error", message: "Valid admin email enter karo." });
+      return;
+    }
+
+    if (!hasLengthBetween(adminForm.password, 4, 64)) {
+      setStatus({ type: "error", message: "Admin password 4 se 64 characters ke beech hona chahiye." });
+      return;
+    }
+
     try {
-      const { data } = await api.post("/admin-users", adminForm);
+      const { data } = await api.post("/admin-users", {
+        ...adminForm,
+        name: normalizeText(adminForm.name),
+        email: normalizeEmail(adminForm.email),
+      });
       const schoolsResponse = await api.get("/schools");
       const adminsResponse = await api.get("/admin-users");
       const allSchools = schoolsResponse.data.schools || [];

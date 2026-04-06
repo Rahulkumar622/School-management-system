@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import api from "../api";
 import { setAuthToken, setParentSession } from "../session";
+import { isValidEmail, isValidSchoolCode, normalizeEmail, normalizeSchoolCode } from "../utils/validation";
 import "../styles/login.css";
 
 function ParentLogin() {
@@ -20,13 +21,23 @@ function ParentLogin() {
       return;
     }
 
+    if (!isValidSchoolCode(schoolCode)) {
+      setError("Valid school code enter karo.");
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError("Valid parent email address enter karo.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError("");
 
     try {
       const { data } = await api.post("/parent-login", {
-        schoolCode: schoolCode.trim().toUpperCase(),
-        email: email.trim(),
+        schoolCode: normalizeSchoolCode(schoolCode),
+        email: normalizeEmail(email),
         password,
       });
 

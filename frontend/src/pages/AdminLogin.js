@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import api from "../api";
 import { setAdminSession, setAuthToken } from "../session";
+import { isValidEmail, isValidSchoolCode, normalizeEmail, normalizeSchoolCode } from "../utils/validation";
 import "../styles/login.css";
 
 function AdminLogin() {
@@ -21,13 +22,23 @@ function AdminLogin() {
       return;
     }
 
+    if (role === "school_admin" && !isValidSchoolCode(schoolCode)) {
+      setError("School code 2 se 20 characters ka hona chahiye.");
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError("Valid email address enter karo.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError("");
 
     const payload = {
       role,
-      schoolCode: schoolCode.trim().toUpperCase(),
-      email: email.trim(),
+      schoolCode: normalizeSchoolCode(schoolCode),
+      email: normalizeEmail(email),
       password,
     };
     

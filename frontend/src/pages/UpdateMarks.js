@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import api from "../api";
+import { hasLengthBetween, isValidMarks, isValidYear, normalizeText } from "../utils/validation";
 import "../styles/appShell.css";
 
 const currentYear = new Date().getFullYear();
@@ -43,15 +44,30 @@ function UploadMarks() {
       return;
     }
 
+    if (!hasLengthBetween(subject, 2, 60)) {
+      setStatus({ type: "error", message: "Subject 2 se 60 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isValidMarks(marks)) {
+      setStatus({ type: "error", message: "Marks 0 se 100 ke beech hone chahiye." });
+      return;
+    }
+
+    if (!isValidYear(year)) {
+      setStatus({ type: "error", message: "Valid 4 digit year enter karo." });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatus({ type: "", message: "" });
 
     try {
       const { data } = await api.post("/upload-marks", {
         student_id: studentId,
-        subject: subject.trim(),
-        marks,
-        year,
+        subject: normalizeText(subject),
+        marks: Number(marks),
+        year: Number(year),
       });
 
       setSubject("");

@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 
 import api from "../api";
 import { getAdminSession } from "../session";
+import {
+  hasLengthBetween,
+  isNonNegativeNumber,
+  isValidEmail,
+  isValidRollNumber,
+  isValidSection,
+  normalizeEmail,
+  normalizeText,
+} from "../utils/validation";
 import "../styles/appShell.css";
 
 const initialForm = {
@@ -100,13 +109,52 @@ function AddStudent() {
       return;
     }
 
+    if (!hasLengthBetween(form.name, 2, 80)) {
+      setStatus({ type: "error", message: "Student name 2 se 80 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.className, 1, 30)) {
+      setStatus({ type: "error", message: "Class required hai aur 30 characters se chhoti honi chahiye." });
+      return;
+    }
+
+    if (!isValidSection(form.section)) {
+      setStatus({ type: "error", message: "Section me sirf letters ya numbers hone chahiye." });
+      return;
+    }
+
+    if (!isValidRollNumber(form.roll_no)) {
+      setStatus({ type: "error", message: "Roll number positive whole number hona chahiye." });
+      return;
+    }
+
+    if (!isValidEmail(form.email)) {
+      setStatus({ type: "error", message: "Valid student email enter karo." });
+      return;
+    }
+
+    if (!hasLengthBetween(form.password, 4, 64)) {
+      setStatus({ type: "error", message: "Password 4 se 64 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isNonNegativeNumber(form.annual_fee)) {
+      setStatus({ type: "error", message: "Annual fee 0 ya usse zyada hona chahiye." });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatus({ type: "", message: "" });
 
     try {
       const { data } = await api.post("/add-student", {
         ...form,
-        email: form.email.trim(),
+        name: normalizeText(form.name),
+        className: normalizeText(form.className),
+        section: normalizeText(form.section).toUpperCase(),
+        roll_no: normalizeText(form.roll_no),
+        email: normalizeEmail(form.email),
         parent_id: form.parent_id ? Number(form.parent_id) : null,
         annual_fee: Number(form.annual_fee),
       });

@@ -3,6 +3,11 @@ import { useNavigate } from "react-router-dom";
 
 import api from "../api";
 import { getTeacherSession } from "../session";
+import {
+  hasLengthBetween,
+  isValidDateInput,
+  normalizeText,
+} from "../utils/validation";
 import "../styles/appShell.css";
 
 const subjectSuggestions = {
@@ -57,6 +62,21 @@ function BulkAttendance() {
       return;
     }
 
+    if (!hasLengthBetween(className, 1, 30)) {
+      setStatus({ type: "error", message: "Class required hai aur valid honi chahiye." });
+      return;
+    }
+
+    if (!hasLengthBetween(subject, 2, 60)) {
+      setStatus({ type: "error", message: "Subject 2 se 60 characters ke beech hona chahiye." });
+      return;
+    }
+
+    if (!isValidDateInput(attendanceDate)) {
+      setStatus({ type: "error", message: "Valid attendance date select karo." });
+      return;
+    }
+
     setIsLoading(true);
     setStatus({ type: "", message: "" });
 
@@ -64,9 +84,9 @@ function BulkAttendance() {
       const { data } = await api.get("/students/classroom", {
         params: {
           schoolId: teacher.school_id,
-          className: className.trim(),
-          section: section.trim(),
-          subject: subject.trim(),
+          className: normalizeText(className),
+          section: normalizeText(section),
+          subject: normalizeText(subject),
           date: attendanceDate,
         },
       });
@@ -116,6 +136,14 @@ function BulkAttendance() {
       return;
     }
 
+    if (!hasLengthBetween(subject, 2, 60) || !isValidDateInput(attendanceDate)) {
+      setStatus({
+        type: "error",
+        message: "Valid subject aur date select karo.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatus({ type: "", message: "" });
 
@@ -126,7 +154,7 @@ function BulkAttendance() {
       }));
 
       const { data } = await api.post("/mark-attendance/bulk", {
-        subject: subject.trim(),
+        subject: normalizeText(subject),
         date: attendanceDate,
         entries,
       });

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import api from "../api";
 import { getStudentSession } from "../session";
+import { isPositiveNumber } from "../utils/validation";
 import "../styles/appShell.css";
 
 const formatCurrency = (value) => `Rs. ${Number(value || 0).toFixed(2)}`;
@@ -43,6 +44,11 @@ function StudentCheckout() {
   }, [student?.id]);
 
   const handlePay = async () => {
+    if (!isPositiveNumber(paymentAmount)) {
+      setStatus({ type: "error", message: "Payment amount valid aur 0 se bada hona chahiye." });
+      return;
+    }
+
     try {
       const { data } = await api.post(`/students/${student.id}/pay-fee`, {
         amount: Number(paymentAmount),
