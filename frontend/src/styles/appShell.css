@@ -464,7 +464,7 @@ body {
 }
 
 .wide-table {
-  min-width: 1180px;
+  min-width: 1400px;
 }
 
 .data-table {
@@ -479,8 +479,11 @@ body {
   text-align: left;
   padding: 16px 18px;
   border-bottom: 1px solid #e2e8f0;
-  vertical-align: top;
-  word-break: break-word;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 80px;
 }
 
 .data-table th {
