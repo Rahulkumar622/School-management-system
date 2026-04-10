@@ -947,6 +947,16 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
       .sort((left, right) => compareClassNames(left.class_name, right.class_name));
   }, [latestAttendanceByStudent, students]);
 
+  const visibleClassAttendanceSnapshot = useMemo(() => {
+    if (!selectedAttendanceClass) {
+      return classAttendanceSnapshot;
+    }
+
+    return classAttendanceSnapshot.filter(
+      (item) => normalizeText(item.class_name) === normalizeText(selectedAttendanceClass)
+    );
+  }, [classAttendanceSnapshot, selectedAttendanceClass]);
+
   const selectedClassAttendanceStudents = useMemo(() => {
     if (!selectedAttendanceClass) {
       return [];
@@ -2298,6 +2308,23 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
               Class-wise Attendance
             </button>
           </div>
+          {attendanceViewMode === "class" ? (
+            <div className="field-group attendance-filter-field">
+              <label htmlFor="attendance-class-filter">Class</label>
+              <select
+                id="attendance-class-filter"
+                value={selectedAttendanceClass}
+                onChange={(event) => setSelectedAttendanceClass(event.target.value)}
+              >
+                <option value="">All Class</option>
+                {classAttendanceSnapshot.map((item) => (
+                  <option key={item.class_name} value={item.class_name}>
+                    {item.class_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <div className="field-group attendance-filter-field">
             <label htmlFor="attendance-date-filter">Attendance Date</label>
             <input
@@ -2405,7 +2432,7 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
             </p>
           </div>
 
-          {classAttendanceSnapshot.length ? (
+          {visibleClassAttendanceSnapshot.length ? (
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
@@ -2419,7 +2446,7 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {classAttendanceSnapshot.map((item) => (
+                  {visibleClassAttendanceSnapshot.map((item) => (
                     <tr key={item.class_name}>
                       <td>
                         <button
