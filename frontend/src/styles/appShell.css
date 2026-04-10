@@ -987,6 +987,19 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  align-items: end;
+}
+
+.attendance-view-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.attendance-toggle-button--active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  color: #ffffff;
+  border-color: transparent;
 }
 
 .attendance-filter-field {
@@ -1096,6 +1109,10 @@ body {
 
   .attendance-detail-header {
     align-items: flex-start;
+  }
+
+  .attendance-view-toggle {
+    width: 100%;
   }
 
   .header-actions {

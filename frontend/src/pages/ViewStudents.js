@@ -18,8 +18,6 @@ function ViewStudents() {
   const [schools, setSchools] = useState([]);
   const [selectedSchool, setSelectedSchool] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
-  const [attendance, setAttendance] = useState([]);
-  const [attendanceView, setAttendanceView] = useState("school");
   const [error, setError] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
   const [isLoading, setIsLoading] = useState(false);
@@ -111,8 +109,6 @@ function ViewStudents() {
     return `${activeSchool.name} (${activeSchool.code})`;
   }, [lockedSchoolId, schools, selectedSchool]);
 
-  const activeSchoolId = selectedSchool || lockedSchoolId || "";
-
   useEffect(() => {
     if (lockedSchoolId) {
       setSelectedSchool(String(lockedSchoolId));
@@ -175,26 +171,6 @@ function ViewStudents() {
   }, [selectedSchool, lockedSchoolId]);
 
   useEffect(() => {
-    const loadAttendance = async () => {
-      if (!activeSchoolId) {
-        setAttendance([]);
-        return;
-      }
-
-      try {
-        const { data } = await api.get("/attendance", {
-          params: { schoolId: activeSchoolId },
-        });
-        setAttendance(data.attendance || []);
-      } catch (requestError) {
-        setAttendance([]);
-      }
-    };
-
-    loadAttendance();
-  }, [activeSchoolId]);
-
-  useEffect(() => {
     const loadParents = async () => {
       try {
         const params =
@@ -248,108 +224,6 @@ function ViewStudents() {
       setSavingStudentId(null);
     }
   };
-
-  const latestAttendanceDate = useMemo(() => {
-    return attendance.reduce((latestDate, item) => {
-      const dateKey = item?.date ? String(item.date).slice(0, 10) : "";
-
-      if (!dateKey) {
-        return latestDate;
-      }
-
-      if (!latestDate || dateKey > latestDate) {
-        return dateKey;
-      }
-
-      return latestDate;
-    }, "");
-  }, [attendance]);
-
-  const latestAttendanceByStudent = useMemo(() => {
-    const attendanceMap = new Map();
-
-    attendance.forEach((item) => {
-      const dateKey = item?.date ? String(item.date).slice(0, 10) : "";
-
-      if (!latestAttendanceDate || dateKey !== latestAttendanceDate) {
-        return;
-      }
-
-      const studentKey = String(item.student_id || "");
-      const current = attendanceMap.get(studentKey);
-
-      if (!current || Number(item.id || 0) > Number(current.id || 0)) {
-        attendanceMap.set(studentKey, item);
-      }
-    });
-
-    return attendanceMap;
-  }, [attendance, latestAttendanceDate]);
-
-  const schoolAttendanceSummary = useMemo(() => {
-    return students.reduce(
-      (summary, student) => {
-        summary.total += 1;
-        const status = String(
-          latestAttendanceByStudent.get(String(student.id))?.status || ""
-        )
-          .trim()
-          .toLowerCase();
-
-        if (status === "present") {
-          summary.present += 1;
-        } else if (status === "absent") {
-          summary.absent += 1;
-        } else {
-          summary.unmarked += 1;
-        }
-
-        return summary;
-      },
-      { total: 0, present: 0, absent: 0, unmarked: 0 }
-    );
-  }, [latestAttendanceByStudent, students]);
-
-  const classAttendanceSummary = useMemo(() => {
-    const classMap = new Map();
-
-    students.forEach((student) => {
-      const className = String(student.class || "").trim() || "Unassigned";
-      const current =
-        classMap.get(className) || {
-          className,
-          total: 0,
-          present: 0,
-          absent: 0,
-          unmarked: 0,
-        };
-
-      current.total += 1;
-
-      const status = String(
-        latestAttendanceByStudent.get(String(student.id))?.status || ""
-      )
-        .trim()
-        .toLowerCase();
-
-      if (status === "present") {
-        current.present += 1;
-      } else if (status === "absent") {
-        current.absent += 1;
-      } else {
-        current.unmarked += 1;
-      }
-
-      classMap.set(className, current);
-    });
-
-    return Array.from(classMap.values()).sort((left, right) =>
-      left.className.localeCompare(right.className, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      })
-    );
-  }, [latestAttendanceByStudent, students]);
 
   return (
     <div className="page-shell">
@@ -409,23 +283,6 @@ function ViewStudents() {
               <strong>{selectedClass === "all" ? "All Students" : formatClassLabel(selectedClass)}</strong>
               <span>{filteredStudents.length} students visible</span>
             </div>
-
-            <div className="student-attendance-actions">
-              <button
-                type="button"
-                className={`secondary-button ${attendanceView === "school" ? "attendance-toggle-active" : ""}`}
-                onClick={() => setAttendanceView("school")}
-              >
-                Total School Attendance
-              </button>
-              <button
-                type="button"
-                className={`secondary-button ${attendanceView === "class" ? "attendance-toggle-active" : ""}`}
-                onClick={() => setAttendanceView("class")}
-              >
-                Class-wise Attendance
-              </button>
-            </div>
           </div>
 
           <div className="student-record-board__right">
@@ -437,63 +294,6 @@ function ViewStudents() {
               </h3>
               <p>List of students</p>
             </div>
-
-            {!activeSchoolId ? (
-              <div className="student-empty-card">
-                <h3>Select a school first.</h3>
-                <p className="section-caption">Attendance view ke liye school select karna zaroori hai.</p>
-              </div>
-            ) : attendanceView === "school" ? (
-              <div className="student-attendance-panel">
-                <div className="student-attendance-summary">
-                  <div className="student-attendance-card">
-                    <span className="card-eyebrow">School</span>
-                    <strong>{schoolAttendanceSummary.total}</strong>
-                    <span>Total Students</span>
-                  </div>
-                  <div className="student-attendance-card">
-                    <span className="card-eyebrow">Present</span>
-                    <strong>{schoolAttendanceSummary.present}</strong>
-                    <span>Latest date: {latestAttendanceDate || "-"}</span>
-                  </div>
-                  <div className="student-attendance-card">
-                    <span className="card-eyebrow">Absent</span>
-                    <strong>{schoolAttendanceSummary.absent}</strong>
-                    <span>Marked absent</span>
-                  </div>
-                  <div className="student-attendance-card">
-                    <span className="card-eyebrow">Not Marked</span>
-                    <strong>{schoolAttendanceSummary.unmarked}</strong>
-                    <span>No attendance entry yet</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="student-attendance-panel">
-                {classAttendanceSummary.length ? (
-                  <div className="student-attendance-class-list">
-                    {classAttendanceSummary.map((item) => (
-                      <div key={item.className} className="student-attendance-class-card">
-                        <div>
-                          <strong>Class {formatClassLabel(item.className)}</strong>
-                          <span>Total {item.total} students</span>
-                        </div>
-                        <div className="student-attendance-class-metrics">
-                          <span>Present: {item.present}</span>
-                          <span>Absent: {item.absent}</span>
-                          <span>Not Marked: {item.unmarked}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="student-empty-card">
-                    <h3>No class attendance data found.</h3>
-                    <p className="section-caption">Attendance mark hone ke baad yahan class-wise summary dikhegi.</p>
-                  </div>
-                )}
-              </div>
-            )}
 
             {isLoading ? (
               <p className="empty-state">Students load ho rahe hain...</p>

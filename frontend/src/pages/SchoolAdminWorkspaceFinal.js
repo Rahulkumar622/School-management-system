@@ -387,6 +387,7 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
   const [classPaymentFilter, setClassPaymentFilter] = useState("");
   const [selectedAttendanceDate, setSelectedAttendanceDate] = useState("");
   const [selectedAttendanceClass, setSelectedAttendanceClass] = useState("");
+  const [attendanceViewMode, setAttendanceViewMode] = useState("school");
 
   const [paymentLookupCode, setPaymentLookupCode] = useState("");
   const [paymentRecord, setPaymentRecord] = useState(null);
@@ -2274,6 +2275,29 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
           </p>
         </div>
         <div className="attendance-filter-bar">
+          <div className="attendance-view-toggle" role="tablist" aria-label="Attendance view mode">
+            <button
+              type="button"
+              className={`secondary-button ${
+                attendanceViewMode === "school" ? "attendance-toggle-button--active" : ""
+              }`}
+              onClick={() => {
+                setAttendanceViewMode("school");
+                setSelectedAttendanceClass("");
+              }}
+            >
+              Total School Attendance
+            </button>
+            <button
+              type="button"
+              className={`secondary-button ${
+                attendanceViewMode === "class" ? "attendance-toggle-button--active" : ""
+              }`}
+              onClick={() => setAttendanceViewMode("class")}
+            >
+              Class-wise Attendance
+            </button>
+          </div>
           <div className="field-group attendance-filter-field">
             <label htmlFor="attendance-date-filter">Attendance Date</label>
             <input
@@ -2294,36 +2318,38 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
         </div>
       </div>
 
-      <div className="card-grid">
-        <MetricCard
-          eyebrow="School"
-          title="Total Students"
-          value={schoolAttendanceSnapshot.total}
-          note="Current school roster size used for today's attendance snapshot."
-          tone="primary"
-        />
-        <MetricCard
-          eyebrow="Present"
-          title="Present Students"
-          value={schoolAttendanceSnapshot.present}
-          note={`Students marked present on ${attendanceSnapshotDate || "the selected date"}.`}
-          tone="neutral"
-        />
-        <MetricCard
-          eyebrow="Absent"
-          title="Absent / Not Marked"
-          value={schoolAttendanceSnapshot.absent + schoolAttendanceSnapshot.unmarked}
-          note={`${schoolAttendanceSnapshot.absent} absent and ${schoolAttendanceSnapshot.unmarked} not marked on ${attendanceSnapshotDate || "the selected date"}.`}
-          tone="accent"
-        />
-        <MetricCard
-          eyebrow="Rate"
-          title="Current Presence Rate"
-          value={formatPercent(currentSchoolAttendanceRate)}
-          note="Presence percentage based on the full student roster, not raw attendance rows."
-          tone="primary"
-        />
-      </div>
+      {attendanceViewMode === "school" ? (
+        <div className="card-grid">
+          <MetricCard
+            eyebrow="School"
+            title="Total Students"
+            value={schoolAttendanceSnapshot.total}
+            note="Current school roster size used for today's attendance snapshot."
+            tone="primary"
+          />
+          <MetricCard
+            eyebrow="Present"
+            title="Present Students"
+            value={schoolAttendanceSnapshot.present}
+            note={`Students marked present on ${attendanceSnapshotDate || "the selected date"}.`}
+            tone="neutral"
+          />
+          <MetricCard
+            eyebrow="Absent"
+            title="Absent / Not Marked"
+            value={schoolAttendanceSnapshot.absent + schoolAttendanceSnapshot.unmarked}
+            note={`${schoolAttendanceSnapshot.absent} absent and ${schoolAttendanceSnapshot.unmarked} not marked on ${attendanceSnapshotDate || "the selected date"}.`}
+            tone="accent"
+          />
+          <MetricCard
+            eyebrow="Rate"
+            title="Current Presence Rate"
+            value={formatPercent(currentSchoolAttendanceRate)}
+            note="Presence percentage based on the full student roster, not raw attendance rows."
+            tone="primary"
+          />
+        </div>
+      ) : null}
 
       <div className="insight-grid">
         <div className="info-card chart-card">
@@ -2370,67 +2396,69 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
         </div>
       </div>
 
-      <div className="info-card table-panel">
-        <div className="table-panel-header">
-          <h3>Class-wise Attendance Snapshot</h3>
-          <p className="section-caption">
-            Total students vs present, absent, and unmarked counts for {attendanceSnapshotDate || "the selected attendance date"}.
-          </p>
-        </div>
-
-        {classAttendanceSnapshot.length ? (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Class</th>
-                  <th>Total Students</th>
-                  <th>Present</th>
-                  <th>Absent</th>
-                  <th>Not Marked</th>
-                  <th>Presence Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {classAttendanceSnapshot.map((item) => (
-                  <tr key={item.class_name}>
-                    <td>
-                      <button
-                        type="button"
-                        className={`class-link-button ${
-                          normalizeText(selectedAttendanceClass) === normalizeText(item.class_name)
-                            ? "class-link-button--active"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          setSelectedAttendanceClass((currentValue) =>
-                            normalizeText(currentValue) === normalizeText(item.class_name)
-                              ? ""
-                              : item.class_name
-                          )
-                        }
-                      >
-                        {item.class_name}
-                      </button>
-                    </td>
-                    <td>{item.total_students}</td>
-                    <td>{item.present_students}</td>
-                    <td>{item.absent_students}</td>
-                    <td>{item.unmarked_students}</td>
-                    <td>{formatPercent(item.attendance_rate)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+      {attendanceViewMode === "class" ? (
+        <div className="info-card table-panel">
           <div className="table-panel-header">
-            <p className="empty-state">Class-wise attendance snapshot abhi available nahi hai.</p>
+            <h3>Class-wise Attendance Snapshot</h3>
+            <p className="section-caption">
+              Total students vs present, absent, and unmarked counts for {attendanceSnapshotDate || "the selected attendance date"}.
+            </p>
           </div>
-        )}
-      </div>
 
-      {selectedAttendanceClass ? (
+          {classAttendanceSnapshot.length ? (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Class</th>
+                    <th>Total Students</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Not Marked</th>
+                    <th>Presence Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {classAttendanceSnapshot.map((item) => (
+                    <tr key={item.class_name}>
+                      <td>
+                        <button
+                          type="button"
+                          className={`class-link-button ${
+                            normalizeText(selectedAttendanceClass) === normalizeText(item.class_name)
+                              ? "class-link-button--active"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            setSelectedAttendanceClass((currentValue) =>
+                              normalizeText(currentValue) === normalizeText(item.class_name)
+                                ? ""
+                                : item.class_name
+                            )
+                          }
+                        >
+                          {item.class_name}
+                        </button>
+                      </td>
+                      <td>{item.total_students}</td>
+                      <td>{item.present_students}</td>
+                      <td>{item.absent_students}</td>
+                      <td>{item.unmarked_students}</td>
+                      <td>{formatPercent(item.attendance_rate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="table-panel-header">
+              <p className="empty-state">Class-wise attendance snapshot abhi available nahi hai.</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {attendanceViewMode === "class" && selectedAttendanceClass ? (
         <div className="info-card table-panel">
           <div className="table-panel-header attendance-detail-header">
             <div>
