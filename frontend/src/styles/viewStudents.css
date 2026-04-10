@@ -81,6 +81,67 @@
   color: var(--text-soft);
 }
 
+.student-attendance-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.attendance-toggle-active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.student-attendance-panel {
+  margin-bottom: 20px;
+}
+
+.student-attendance-summary,
+.student-attendance-class-list {
+  display: grid;
+  gap: 14px;
+}
+
+.student-attendance-summary {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.student-attendance-card,
+.student-attendance-class-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(240, 249, 255, 0.72);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.student-attendance-card strong,
+.student-attendance-class-card strong {
+  display: block;
+  font-size: 1.6rem;
+  letter-spacing: -0.04em;
+}
+
+.student-attendance-card span,
+.student-attendance-class-card span {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-soft);
+}
+
+.student-attendance-class-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.student-attendance-class-metrics {
+  min-width: 170px;
+  text-align: right;
+}
+
 .student-list-panel {
   display: grid;
   gap: 14px;
@@ -156,12 +217,18 @@
   }
 
   .student-record-main,
-  .student-record-actions {
+  .student-record-actions,
+  .student-attendance-class-card {
     grid-template-columns: 1fr;
     display: grid;
   }
 
   .student-record-fee {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .student-attendance-class-metrics {
     min-width: 0;
     text-align: left;
   }
