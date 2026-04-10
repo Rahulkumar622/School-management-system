@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import api from "../api";
@@ -11,10 +11,44 @@ function AdminLogin() {
   const [schoolCode, setSchoolCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [schools, setSchools] = useState([]);
+  const [isLoadingSchools, setIsLoadingSchools] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSchools = async () => {
+      try {
+        const { data } = await api.get("/schools");
+
+        if (!isMounted) {
+          return;
+        }
+
+        setSchools(Array.isArray(data?.schools) ? data.schools : []);
+      } catch (requestError) {
+        if (!isMounted) {
+          return;
+        }
+
+        setError(requestError.response?.data?.message || "School list load nahi ho pa rahi.");
+      } finally {
+        if (isMounted) {
+          setIsLoadingSchools(false);
+        }
+      }
+    };
+
+    loadSchools();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const login = async () => {
     if (!email.trim() || !password || (role === "school_admin" && !schoolCode.trim())) {
@@ -97,13 +131,25 @@ function AdminLogin() {
           </select>
 
           {role === "school_admin" ? (
-            <input
-              type="text"
-              placeholder="Enter School Code"
+            <select
               value={schoolCode}
               onChange={(event) => setSchoolCode(event.target.value)}
               autoComplete="organization"
-            />
+              disabled={isLoadingSchools || schools.length === 0}
+            >
+              <option value="">
+                {isLoadingSchools
+                  ? "Loading schools..."
+                  : schools.length > 0
+                    ? "Select School Code"
+                    : "No schools found"}
+              </option>
+              {schools.map((school) => (
+                <option key={school.id || school.code} value={school.code}>
+                  {school.name} ({school.code})
+                </option>
+              ))}
+            </select>
           ) : null}
 
           <input

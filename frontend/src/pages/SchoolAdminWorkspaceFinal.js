@@ -385,6 +385,8 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
     query: "",
   });
   const [classPaymentFilter, setClassPaymentFilter] = useState("");
+  const [selectedAttendanceDate, setSelectedAttendanceDate] = useState("");
+  const [selectedAttendanceClass, setSelectedAttendanceClass] = useState("");
 
   const [paymentLookupCode, setPaymentLookupCode] = useState("");
   const [paymentRecord, setPaymentRecord] = useState(null);
@@ -806,8 +808,172 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
     );
   }, [attendance]);
 
+  const availableAttendanceDates = useMemo(() => {
+    return Array.from(
+      new Set(
+        attendance
+          .map((item) => formatDate(item.date))
+          .filter((dateKey) => dateKey && dateKey !== "-")
+      )
+    ).sort((left, right) => right.localeCompare(left));
+  }, [attendance]);
+
+  const latestAttendanceDate = useMemo(() => {
+    return availableAttendanceDates[0] || "";
+  }, [availableAttendanceDates]);
+
+  useEffect(() => {
+    if (!availableAttendanceDates.length) {
+      if (selectedAttendanceDate) {
+        setSelectedAttendanceDate("");
+      }
+      return;
+    }
+
+    if (!selectedAttendanceDate || !availableAttendanceDates.includes(selectedAttendanceDate)) {
+      setSelectedAttendanceDate(availableAttendanceDates[0]);
+    }
+  }, [availableAttendanceDates, selectedAttendanceDate]);
+
+  useEffect(() => {
+    if (!selectedAttendanceClass) {
+      return;
+    }
+
+    const hasClass = students.some(
+      (student) => normalizeText(student.class) === normalizeText(selectedAttendanceClass)
+    );
+
+    if (!hasClass) {
+      setSelectedAttendanceClass("");
+    }
+  }, [selectedAttendanceClass, students]);
+
+  const attendanceSnapshotDate = selectedAttendanceDate || latestAttendanceDate;
+  const visibleAttendance = useMemo(() => {
+    if (!attendanceSnapshotDate) {
+      return attendance;
+    }
+
+    return attendance.filter((item) => formatDate(item.date) === attendanceSnapshotDate);
+  }, [attendance, attendanceSnapshotDate]);
+
+  const latestAttendanceByStudent = useMemo(() => {
+    const summaryMap = new Map();
+
+    attendance.forEach((item) => {
+      if (formatDate(item.date) !== attendanceSnapshotDate) {
+        return;
+      }
+
+      const studentKey = String(item.student_id || "");
+
+      if (!studentKey) {
+        return;
+      }
+
+      const current = summaryMap.get(studentKey);
+      const currentId = Number(current?.id || 0);
+      const nextId = Number(item.id || 0);
+
+      if (!current || nextId >= currentId) {
+        summaryMap.set(studentKey, item);
+      }
+    });
+
+    return summaryMap;
+  }, [attendance, attendanceSnapshotDate]);
+
+  const schoolAttendanceSnapshot = useMemo(() => {
+    return students.reduce(
+      (summary, student) => {
+        summary.total += 1;
+
+        const record = latestAttendanceByStudent.get(String(student.id));
+        const status = normalizeKey(record?.status);
+
+        if (status === "present") {
+          summary.present += 1;
+        } else if (status === "absent") {
+          summary.absent += 1;
+        } else {
+          summary.unmarked += 1;
+        }
+
+        return summary;
+      },
+      { total: 0, present: 0, absent: 0, unmarked: 0 }
+    );
+  }, [latestAttendanceByStudent, students]);
+
+  const classAttendanceSnapshot = useMemo(() => {
+    const summaryMap = new Map();
+
+    students.forEach((student) => {
+      const className = normalizeText(student.class) || "Unassigned";
+      const current =
+        summaryMap.get(className) || {
+          class_name: className,
+          total_students: 0,
+          present_students: 0,
+          absent_students: 0,
+          unmarked_students: 0,
+        };
+
+      current.total_students += 1;
+
+      const record = latestAttendanceByStudent.get(String(student.id));
+      const status = normalizeKey(record?.status);
+
+      if (status === "present") {
+        current.present_students += 1;
+      } else if (status === "absent") {
+        current.absent_students += 1;
+      } else {
+        current.unmarked_students += 1;
+      }
+
+      summaryMap.set(className, current);
+    });
+
+    return Array.from(summaryMap.values())
+      .map((item) => ({
+        ...item,
+        attendance_rate: item.total_students
+          ? (item.present_students / item.total_students) * 100
+          : 0,
+      }))
+      .sort((left, right) => compareClassNames(left.class_name, right.class_name));
+  }, [latestAttendanceByStudent, students]);
+
+  const selectedClassAttendanceStudents = useMemo(() => {
+    if (!selectedAttendanceClass) {
+      return [];
+    }
+
+    return students
+      .filter((student) => normalizeText(student.class) === normalizeText(selectedAttendanceClass))
+      .map((student) => {
+        const record = latestAttendanceByStudent.get(String(student.id));
+        const status = record?.status || "Not Marked";
+
+        return {
+          id: student.id,
+          name: student.name,
+          student_code: student.student_code,
+          status,
+          subject: record?.subject || "-",
+        };
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+  }, [latestAttendanceByStudent, selectedAttendanceClass, students]);
+
   const attendanceRate = attendanceSummary.total
     ? (attendanceSummary.present / attendanceSummary.total) * 100
+    : 0;
+
+  const currentSchoolAttendanceRate = schoolAttendanceSnapshot.total
+    ? (schoolAttendanceSnapshot.present / schoolAttendanceSnapshot.total) * 100
     : 0;
 
   const attendanceTrend = useMemo(() => {
@@ -1045,7 +1211,7 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
 
   const recentAdmissions = filteredAdmissions.slice(0, 5);
   const recentPayments = payments.slice(0, 6);
-  const recentAttendance = attendance.slice(0, 8);
+  const recentAttendance = visibleAttendance.slice(0, 8);
   const recentMarks = marks.slice(0, 8);
   const timetableByDay = useMemo(() => {
     const grouped = {};
@@ -2107,35 +2273,54 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
             Daily presence should be easy to read at a glance and easy to escalate when trends slip.
           </p>
         </div>
+        <div className="attendance-filter-bar">
+          <div className="field-group attendance-filter-field">
+            <label htmlFor="attendance-date-filter">Attendance Date</label>
+            <input
+              id="attendance-date-filter"
+              type="date"
+              value={selectedAttendanceDate}
+              onChange={(event) => setSelectedAttendanceDate(event.target.value)}
+              min={availableAttendanceDates[availableAttendanceDates.length - 1] || undefined}
+              max={availableAttendanceDates[0] || undefined}
+              list="attendance-date-options"
+            />
+            <datalist id="attendance-date-options">
+              {availableAttendanceDates.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          </div>
+        </div>
       </div>
 
       <div className="card-grid">
         <MetricCard
-          eyebrow="Entries"
-          title="Attendance Records"
-          value={attendanceSummary.total}
-          note="Total attendance entries currently saved for this school."
+          eyebrow="School"
+          title="Total Students"
+          value={schoolAttendanceSnapshot.total}
+          note="Current school roster size used for today's attendance snapshot."
           tone="primary"
         />
         <MetricCard
           eyebrow="Present"
-          title="Present Count"
-          value={attendanceSummary.present}
-          note="Records marked present across the current attendance ledger."
+          title="Present Students"
+          value={schoolAttendanceSnapshot.present}
+          note={`Students marked present on ${attendanceSnapshotDate || "the selected date"}.`}
           tone="neutral"
         />
         <MetricCard
           eyebrow="Absent"
-          title="Absent Count"
-          value={attendanceSummary.absent}
-          note="Records marked absent and ready for follow-up communication."
+          title="Absent / Not Marked"
+          value={schoolAttendanceSnapshot.absent + schoolAttendanceSnapshot.unmarked}
+          note={`${schoolAttendanceSnapshot.absent} absent and ${schoolAttendanceSnapshot.unmarked} not marked on ${attendanceSnapshotDate || "the selected date"}.`}
           tone="accent"
         />
         <MetricCard
           eyebrow="Rate"
           title="Current Presence Rate"
-          value={formatPercent(attendanceRate)}
-          note="Attendance percentage derived from all saved attendance entries."
+          value={formatPercent(currentSchoolAttendanceRate)}
+          note="Presence percentage based on the full student roster, not raw attendance rows."
           tone="primary"
         />
       </div>
@@ -2160,6 +2345,9 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
         <div className="info-card">
           <span className="card-eyebrow">Recent Attendance Activity</span>
           <h3>Latest saved records</h3>
+          <p className="section-caption">
+            Snapshot date: {attendanceSnapshotDate || "No attendance marked yet"}.
+          </p>
           <div className="activity-list">
             {recentAttendance.length ? (
               recentAttendance.map((item) => (
@@ -2184,11 +2372,124 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
 
       <div className="info-card table-panel">
         <div className="table-panel-header">
-          <h3>Attendance Ledger</h3>
-          <p className="section-caption">Recent records across subjects and dates for this school.</p>
+          <h3>Class-wise Attendance Snapshot</h3>
+          <p className="section-caption">
+            Total students vs present, absent, and unmarked counts for {attendanceSnapshotDate || "the selected attendance date"}.
+          </p>
         </div>
 
-        {attendance.length ? (
+        {classAttendanceSnapshot.length ? (
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Class</th>
+                  <th>Total Students</th>
+                  <th>Present</th>
+                  <th>Absent</th>
+                  <th>Not Marked</th>
+                  <th>Presence Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {classAttendanceSnapshot.map((item) => (
+                  <tr key={item.class_name}>
+                    <td>
+                      <button
+                        type="button"
+                        className={`class-link-button ${
+                          normalizeText(selectedAttendanceClass) === normalizeText(item.class_name)
+                            ? "class-link-button--active"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          setSelectedAttendanceClass((currentValue) =>
+                            normalizeText(currentValue) === normalizeText(item.class_name)
+                              ? ""
+                              : item.class_name
+                          )
+                        }
+                      >
+                        {item.class_name}
+                      </button>
+                    </td>
+                    <td>{item.total_students}</td>
+                    <td>{item.present_students}</td>
+                    <td>{item.absent_students}</td>
+                    <td>{item.unmarked_students}</td>
+                    <td>{formatPercent(item.attendance_rate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="table-panel-header">
+            <p className="empty-state">Class-wise attendance snapshot abhi available nahi hai.</p>
+          </div>
+        )}
+      </div>
+
+      {selectedAttendanceClass ? (
+        <div className="info-card table-panel">
+          <div className="table-panel-header attendance-detail-header">
+            <div>
+              <h3>{selectedAttendanceClass} Attendance Detail</h3>
+              <p className="section-caption">
+                Student-wise status for {attendanceSnapshotDate || "the selected date"}.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setSelectedAttendanceClass("")}
+            >
+              Clear Class
+            </button>
+          </div>
+
+          {selectedClassAttendanceStudents.length ? (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Student Code</th>
+                    <th>Subject</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedClassAttendanceStudents.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.name}</td>
+                      <td>{item.student_code || "-"}</td>
+                      <td>{item.subject}</td>
+                      <td>
+                        <StatusPill value={item.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="table-panel-header">
+              <p className="empty-state">Is class ke liye attendance detail abhi available nahi hai.</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      <div className="info-card table-panel">
+        <div className="table-panel-header">
+          <h3>Attendance Ledger</h3>
+          <p className="section-caption">
+            Records for {attendanceSnapshotDate || "the selected date"} across subjects and students.
+          </p>
+        </div>
+
+        {visibleAttendance.length ? (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
@@ -2200,7 +2501,7 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
                 </tr>
               </thead>
               <tbody>
-                {attendance.map((item) => (
+                {visibleAttendance.map((item) => (
                   <tr key={item.id}>
                     <td>{item.student_name}</td>
                     <td>{item.subject}</td>
@@ -2215,7 +2516,7 @@ function SchoolAdminWorkspaceFinal({ admin, stats, error, isLoading }) {
           </div>
         ) : (
           <div className="table-panel-header">
-            <p className="empty-state">No attendance records available yet.</p>
+            <p className="empty-state">Selected date ke liye attendance records available nahi hain.</p>
           </div>
         )}
       </div>
