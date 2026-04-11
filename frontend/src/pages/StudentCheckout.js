@@ -8,6 +8,12 @@ import "../styles/appShell.css";
 
 const formatCurrency = (value) => `Rs. ${Number(value || 0).toFixed(2)}`;
 const formatDate = (value) => String(value || "").slice(0, 10) || "Not available";
+const sanitizeDecimal = (value) => {
+  const normalized = String(value || "").replace(/[^\d.]/g, "");
+  const [integerPart = "", ...decimalParts] = normalized.split(".");
+  const decimalPart = decimalParts.join("");
+  return decimalParts.length ? `${integerPart}.${decimalPart.slice(0, 2)}` : integerPart;
+};
 
 function StudentCheckout() {
   const location = useLocation();
@@ -117,7 +123,15 @@ function StudentCheckout() {
             <h3>Pay Now</h3>
             <div className="field-group">
               <label htmlFor="checkout-amount">Amount</label>
-              <input id="checkout-amount" type="number" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
+              <input
+                id="checkout-amount"
+                type="number"
+                min="1"
+                step="0.01"
+                inputMode="decimal"
+                value={paymentAmount}
+                onChange={(event) => setPaymentAmount(sanitizeDecimal(event.target.value))}
+              />
             </div>
             <div className="button-row">
               <button className="primary-button" onClick={handlePay}>

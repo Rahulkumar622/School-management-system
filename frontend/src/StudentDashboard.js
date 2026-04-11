@@ -16,10 +16,17 @@ import jsPDF from "jspdf";
 
 import api from "./api";
 import { clearStudentSession, getStudentSession } from "./session";
+import { isPositiveNumber } from "./utils/validation";
 import "./styles/appShell.css";
 
 const formatCurrency = (value) => `Rs. ${Number(value || 0).toFixed(2)}`;
 const formatDate = (value) => String(value || "").slice(0, 10) || "Not available";
+const sanitizeDecimal = (value) => {
+  const normalized = String(value || "").replace(/[^\d.]/g, "");
+  const [integerPart = "", ...decimalParts] = normalized.split(".");
+  const decimalPart = decimalParts.join("");
+  return decimalParts.length ? `${integerPart}.${decimalPart.slice(0, 2)}` : integerPart;
+};
 
 const getStatusTone = (value) => {
   const normalized = String(value || "").toLowerCase();
@@ -228,17 +235,17 @@ function StudentDashboard() {
   };
 
   const handleDummyPayment = async () => {
-    const amount = Number(paymentAmount);
-
     if (!fee) {
       setPaymentStatus({ type: "error", message: "Fee details are not available." });
       return;
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!isPositiveNumber(paymentAmount)) {
       setPaymentStatus({ type: "error", message: "Enter a valid payment amount." });
       return;
     }
+
+    const amount = Number(paymentAmount);
 
     setIsPaying(true);
     setPaymentStatus({ type: "", message: "" });
@@ -472,8 +479,10 @@ function StudentDashboard() {
                   id="dummy-payment-amount"
                   type="number"
                   min="1"
+                  step="0.01"
+                  inputMode="decimal"
                   value={paymentAmount}
-                  onChange={(event) => setPaymentAmount(event.target.value)}
+                  onChange={(event) => setPaymentAmount(sanitizeDecimal(event.target.value))}
                   placeholder="Enter amount to pay"
                 />
               </div>

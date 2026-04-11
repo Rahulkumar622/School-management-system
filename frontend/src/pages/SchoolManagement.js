@@ -50,6 +50,49 @@ const mapSchoolToForm = (school) => ({
   address: school.address || "",
 });
 
+const sanitizeDigits = (value, maxLength) => String(value || "").replace(/\D/g, "").slice(0, maxLength);
+
+const sanitizeDecimal = (value) => {
+  const normalized = String(value || "").replace(/[^\d.]/g, "");
+  const [integerPart = "", ...decimalParts] = normalized.split(".");
+  const decimalPart = decimalParts.join("");
+  return decimalParts.length ? `${integerPart}.${decimalPart.slice(0, 2)}` : integerPart;
+};
+
+const buildSchoolFormErrors = (schoolForm) => {
+  const errors = {};
+
+  if (!hasLengthBetween(schoolForm.name, 2, 120)) {
+    errors.name = "School name 2 se 120 characters ke beech hona chahiye.";
+  }
+
+  if (!isValidSchoolCode(schoolForm.code)) {
+    errors.code = "School code valid format me enter karo.";
+  }
+
+  if (!Number.isInteger(Number(schoolForm.max_students)) || Number(schoolForm.max_students) <= 0) {
+    errors.max_students = "Student limit positive whole number hona chahiye.";
+  }
+
+  if (!isNonNegativeNumber(schoolForm.software_fee)) {
+    errors.software_fee = "Software fee me sirf valid numbers allowed hain.";
+  }
+
+  if (!isNonNegativeNumber(schoolForm.software_paid_amount)) {
+    errors.software_paid_amount = "Paid amount me sirf valid numbers allowed hain.";
+  }
+
+  if (schoolForm.contact_email && !isValidEmail(schoolForm.contact_email)) {
+    errors.contact_email = "Valid contact email enter karo. Example: abc@gmail.com";
+  }
+
+  if (schoolForm.contact_phone && !isValidPhone(schoolForm.contact_phone)) {
+    errors.contact_phone = "Contact phone me exactly 10 digits honi chahiye.";
+  }
+
+  return errors;
+};
+
 function SchoolManagement() {
   const adminSession = getAdminSession();
   const isSuperAdmin = adminSession?.role === "super_admin";
@@ -61,6 +104,8 @@ function SchoolManagement() {
   const [isSavingSchool, setIsSavingSchool] = useState(false);
   const [deletingSchoolId, setDeletingSchoolId] = useState(null);
   const [status, setStatus] = useState({ type: "", message: "" });
+  const [schoolFormErrors, setSchoolFormErrors] = useState({});
+  const [adminFormErrors, setAdminFormErrors] = useState({});
 
   useEffect(() => {
     const loadData = async () => {
@@ -123,16 +168,51 @@ function SchoolManagement() {
   );
 
   const updateSchoolField = (field) => (event) => {
-    setSchoolForm((current) => ({ ...current, [field]: event.target.value }));
+    const { value } = event.target;
+
+    let nextValue = value;
+
+    if (field === "contact_phone") {
+      nextValue = sanitizeDigits(value, 10);
+    }
+
+    if (field === "max_students") {
+      nextValue = sanitizeDigits(value, 6);
+    }
+
+    if (field === "software_fee" || field === "software_paid_amount") {
+      nextValue = sanitizeDecimal(value);
+    }
+
+    setSchoolForm((current) => ({ ...current, [field]: nextValue }));
+    setSchoolFormErrors((current) => {
+      if (!current[field]) {
+        return current;
+      }
+
+      const nextErrors = { ...current };
+      delete nextErrors[field];
+      return nextErrors;
+    });
   };
 
   const updateAdminField = (field) => (event) => {
     setAdminForm((current) => ({ ...current, [field]: event.target.value }));
+    setAdminFormErrors((current) => {
+      if (!current[field]) {
+        return current;
+      }
+
+      const nextErrors = { ...current };
+      delete nextErrors[field];
+      return nextErrors;
+    });
   };
 
   const resetSchoolForm = () => {
     setSchoolForm(createInitialSchoolForm());
     setEditingSchoolId(null);
+    setSchoolFormErrors({});
   };
 
   const refreshAdmins = async () => {
@@ -145,39 +225,20 @@ function SchoolManagement() {
     setAdmins(data.admins || []);
   };
 
-  const handleSchoolSubmit = async () => {
-    if (!hasLengthBetween(schoolForm.name, 2, 120)) {
-      setStatus({ type: "error", message: "School name 2 se 120 characters ke beech hona chahiye." });
-      return;
-    }
+  const handleSchoolSubmit = async (event) => {
+    event.preventDefault();
 
-    if (!isValidSchoolCode(schoolForm.code)) {
-      setStatus({ type: "error", message: "School code valid format me enter karo." });
-      return;
-    }
+    const errors = buildSchoolFormErrors(schoolForm);
 
-    if (!Number.isInteger(Number(schoolForm.max_students)) || Number(schoolForm.max_students) <= 0) {
-      setStatus({ type: "error", message: "Student limit positive whole number hona chahiye." });
-      return;
-    }
-
-    if (!isNonNegativeNumber(schoolForm.software_fee) || !isNonNegativeNumber(schoolForm.software_paid_amount)) {
-      setStatus({ type: "error", message: "Software fee aur paid amount 0 ya usse zyada hone chahiye." });
-      return;
-    }
-
-    if (schoolForm.contact_email && !isValidEmail(schoolForm.contact_email)) {
-      setStatus({ type: "error", message: "Valid contact email enter karo." });
-      return;
-    }
-
-    if (schoolForm.contact_phone && !isValidPhone(schoolForm.contact_phone)) {
-      setStatus({ type: "error", message: "Contact phone me exactly 10 digits honi chahiye." });
+    if (Object.keys(errors).length) {
+      setSchoolFormErrors(errors);
+      setStatus({ type: "error", message: Object.values(errors)[0] });
       return;
     }
 
     setIsSavingSchool(true);
     setStatus({ type: "", message: "" });
+    setSchoolFormErrors({});
 
     try {
       const payload = {
@@ -217,6 +278,7 @@ function SchoolManagement() {
   const handleEditSchool = (school) => {
     setEditingSchoolId(school.id);
     setSchoolForm(mapSchoolToForm(school));
+    setSchoolFormErrors({});
     setStatus({ type: "", message: "" });
   };
 
@@ -252,28 +314,35 @@ function SchoolManagement() {
     }
   };
 
-  const handleCreateAdmin = async () => {
+  const handleCreateAdmin = async (event) => {
+    event.preventDefault();
+
     if (!adminForm.school_id) {
+      setAdminFormErrors({ school_id: "School select karo." });
       setStatus({ type: "error", message: "School select karo." });
       return;
     }
 
     if (!hasLengthBetween(adminForm.name, 2, 80)) {
+      setAdminFormErrors({ name: "Admin name 2 se 80 characters ke beech hona chahiye." });
       setStatus({ type: "error", message: "Admin name 2 se 80 characters ke beech hona chahiye." });
       return;
     }
 
     if (!isValidEmail(adminForm.email)) {
+      setAdminFormErrors({ email: "Valid admin email enter karo. Example: abc@gmail.com" });
       setStatus({ type: "error", message: "Valid admin email enter karo." });
       return;
     }
 
     if (!hasLengthBetween(adminForm.password, 4, 64)) {
+      setAdminFormErrors({ password: "Admin password 4 se 64 characters ke beech hona chahiye." });
       setStatus({ type: "error", message: "Admin password 4 se 64 characters ke beech hona chahiye." });
       return;
     }
 
     try {
+      setAdminFormErrors({});
       const { data } = await api.post("/admin-users", {
         ...adminForm,
         name: normalizeText(adminForm.name),
@@ -285,6 +354,7 @@ function SchoolManagement() {
       setSchools(allSchools);
       setAdmins(adminsResponse.data.admins || []);
       setAdminForm(initialAdminForm);
+      setAdminFormErrors({});
       setStatus({ type: "success", message: data.message });
     } catch (requestError) {
       setStatus({
@@ -333,22 +403,26 @@ function SchoolManagement() {
                 <p className="empty-state" style={{ marginBottom: "16px" }}>
                   School details ke saath software fee, paid amount, due amount ka owner-side record bhi yahin maintain karo.
                 </p>
+                <form onSubmit={handleSchoolSubmit} noValidate>
                 <div className="form-grid">
                   <div className="field-group">
-                    <label>School Name</label>
-                    <input value={schoolForm.name} onChange={updateSchoolField("name")} />
+                    <label htmlFor="school-name">School Name</label>
+                    <input id="school-name" value={schoolForm.name} onChange={updateSchoolField("name")} />
+                    {schoolFormErrors.name ? <small className="status-message error">{schoolFormErrors.name}</small> : null}
                   </div>
                   <div className="field-group">
-                    <label>School Code</label>
-                    <input value={schoolForm.code} onChange={updateSchoolField("code")} />
+                    <label htmlFor="school-code">School Code</label>
+                    <input id="school-code" value={schoolForm.code} onChange={updateSchoolField("code")} />
+                    {schoolFormErrors.code ? <small className="status-message error">{schoolFormErrors.code}</small> : null}
                   </div>
                   <div className="field-group">
-                    <label>Board</label>
-                    <input value={schoolForm.board} onChange={updateSchoolField("board")} />
+                    <label htmlFor="school-board">Board</label>
+                    <input id="school-board" value={schoolForm.board} onChange={updateSchoolField("board")} />
                   </div>
                   <div className="field-group">
-                    <label>Access Status</label>
+                    <label htmlFor="school-status">Access Status</label>
                     <select
+                      id="school-status"
                       value={schoolForm.subscription_status}
                       onChange={updateSchoolField("subscription_status")}
                     >
@@ -358,57 +432,98 @@ function SchoolManagement() {
                     </select>
                   </div>
                   <div className="field-group">
-                    <label>Student Limit</label>
+                    <label htmlFor="school-max-students">Student Limit</label>
                     <input
+                      id="school-max-students"
                       type="number"
                       min="1"
+                      step="1"
+                      inputMode="numeric"
                       value={schoolForm.max_students}
                       onChange={updateSchoolField("max_students")}
                     />
+                    {schoolFormErrors.max_students ? (
+                      <small className="status-message error">{schoolFormErrors.max_students}</small>
+                    ) : null}
                   </div>
                   <div className="field-group">
-                    <label>Software Fee</label>
+                    <label htmlFor="school-software-fee">Software Fee</label>
                     <input
+                      id="school-software-fee"
                       type="number"
                       min="0"
+                      step="0.01"
+                      inputMode="decimal"
                       value={schoolForm.software_fee}
                       onChange={updateSchoolField("software_fee")}
                     />
+                    {schoolFormErrors.software_fee ? (
+                      <small className="status-message error">{schoolFormErrors.software_fee}</small>
+                    ) : null}
                   </div>
                   <div className="field-group">
-                    <label>Paid Amount</label>
+                    <label htmlFor="school-paid-amount">Paid Amount</label>
                     <input
+                      id="school-paid-amount"
                       type="number"
                       min="0"
+                      step="0.01"
+                      inputMode="decimal"
                       value={schoolForm.software_paid_amount}
                       onChange={updateSchoolField("software_paid_amount")}
                     />
+                    {schoolFormErrors.software_paid_amount ? (
+                      <small className="status-message error">{schoolFormErrors.software_paid_amount}</small>
+                    ) : null}
                   </div>
                   <div className="field-group">
-                    <label>Last Payment Date</label>
+                    <label htmlFor="school-last-payment-date">Last Payment Date</label>
                     <input
+                      id="school-last-payment-date"
                       type="date"
                       value={schoolForm.last_payment_date}
                       onChange={updateSchoolField("last_payment_date")}
                     />
                   </div>
                   <div className="field-group">
-                    <label>Contact Email</label>
-                    <input value={schoolForm.contact_email} onChange={updateSchoolField("contact_email")} />
+                    <label htmlFor="school-contact-email">Contact Email</label>
+                    <input
+                      id="school-contact-email"
+                      type="email"
+                      inputMode="email"
+                      placeholder="abc@gmail.com"
+                      value={schoolForm.contact_email}
+                      onChange={updateSchoolField("contact_email")}
+                    />
+                    {schoolFormErrors.contact_email ? (
+                      <small className="status-message error">{schoolFormErrors.contact_email}</small>
+                    ) : null}
                   </div>
                   <div className="field-group">
-                    <label>Contact Phone</label>
-                    <input value={schoolForm.contact_phone} onChange={updateSchoolField("contact_phone")} />
+                    <label htmlFor="school-contact-phone">Contact Phone</label>
+                    <input
+                      id="school-contact-phone"
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength="10"
+                      pattern="\d{10}"
+                      placeholder="9876543210"
+                      value={schoolForm.contact_phone}
+                      onChange={updateSchoolField("contact_phone")}
+                    />
+                    {schoolFormErrors.contact_phone ? (
+                      <small className="status-message error">{schoolFormErrors.contact_phone}</small>
+                    ) : null}
                   </div>
                   <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                    <label>Address</label>
-                    <input value={schoolForm.address} onChange={updateSchoolField("address")} />
+                    <label htmlFor="school-address">Address</label>
+                    <input id="school-address" value={schoolForm.address} onChange={updateSchoolField("address")} />
                   </div>
                 </div>
                 <div className="button-row">
                   <button
                     className="primary-button"
-                    onClick={handleSchoolSubmit}
+                    type="submit"
                     disabled={isSavingSchool}
                   >
                     {isSavingSchool
@@ -419,20 +534,23 @@ function SchoolManagement() {
                   </button>
                   <button
                     className="secondary-button"
+                    type="button"
                     onClick={resetSchoolForm}
                     disabled={isSavingSchool}
                   >
                     {editingSchoolId ? "Cancel Edit" : "Reset"}
                   </button>
                 </div>
+                </form>
               </div>
 
               <div className="info-card">
                 <h3>Create School Admin</h3>
+                <form onSubmit={handleCreateAdmin} noValidate>
                 <div className="form-grid">
                   <div className="field-group">
-                    <label>School</label>
-                    <select value={adminForm.school_id} onChange={updateAdminField("school_id")}>
+                    <label htmlFor="admin-school">School</label>
+                    <select id="admin-school" value={adminForm.school_id} onChange={updateAdminField("school_id")}>
                       <option value="">Select School</option>
                       {schools.map((school) => (
                         <option key={school.id} value={school.id}>
@@ -440,23 +558,35 @@ function SchoolManagement() {
                         </option>
                       ))}
                     </select>
+                    {adminFormErrors.school_id ? <small className="status-message error">{adminFormErrors.school_id}</small> : null}
                   </div>
                   <div className="field-group">
-                    <label>Name</label>
-                    <input value={adminForm.name} onChange={updateAdminField("name")} />
+                    <label htmlFor="admin-name">Name</label>
+                    <input id="admin-name" value={adminForm.name} onChange={updateAdminField("name")} />
+                    {adminFormErrors.name ? <small className="status-message error">{adminFormErrors.name}</small> : null}
                   </div>
                   <div className="field-group">
-                    <label>Email</label>
-                    <input value={adminForm.email} onChange={updateAdminField("email")} />
+                    <label htmlFor="admin-email">Email</label>
+                    <input
+                      id="admin-email"
+                      type="email"
+                      inputMode="email"
+                      placeholder="abc@gmail.com"
+                      value={adminForm.email}
+                      onChange={updateAdminField("email")}
+                    />
+                    {adminFormErrors.email ? <small className="status-message error">{adminFormErrors.email}</small> : null}
                   </div>
                   <div className="field-group">
-                    <label>Password</label>
-                    <input type="password" value={adminForm.password} onChange={updateAdminField("password")} />
+                    <label htmlFor="admin-password">Password</label>
+                    <input id="admin-password" type="password" value={adminForm.password} onChange={updateAdminField("password")} />
+                    {adminFormErrors.password ? <small className="status-message error">{adminFormErrors.password}</small> : null}
                   </div>
                 </div>
                 <div className="button-row">
-                  <button className="primary-button" onClick={handleCreateAdmin}>Create School Admin</button>
+                  <button className="primary-button" type="submit">Create School Admin</button>
                 </div>
+                </form>
               </div>
             </div>
           </>
