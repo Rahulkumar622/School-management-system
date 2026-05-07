@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 
 import StudentLogin from "./StudentLogin";
 import StudentDashboard from "./StudentDashboard";
@@ -23,10 +24,22 @@ import AdmissionForm from "./pages/AdmissionForm";
 import ParentLogin from "./pages/ParentLogin";
 import ParentDashboard from "./pages/ParentDashboard";
 import ProtectedRoute from "./ProtectedRoute";
+import { applySeo } from "./seo";
+
+function SeoManager() {
+  const location = useLocation();
+
+  useEffect(() => {
+    applySeo(location.pathname);
+  }, [location.pathname]);
+
+  return null;
+}
 
 function App() {
   return (
     <Router>
+      <SeoManager />
       <Routes>
         <Route path="/" element={<LoginSelect />} />
         <Route path="/student-login" element={<StudentLogin />} />

@@ -1,3 +1,21 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /student-dashboard
+Disallow: /student-checkout
+Disallow: /teacher-dashboard
+Disallow: /bulk-attendance
+Disallow: /update-marks
+Disallow: /mark-attendance
+Disallow: /parent-dashboard
+Disallow: /admin-dashboard
+Disallow: /school-management
+Disallow: /attendance-reports
+Disallow: /marks-reports
+Disallow: /payment-reports
+Disallow: /add-student
+Disallow: /add-teacher
+Disallow: /view-reports
+Disallow: /view-students
+
+Sitemap: https://www.rahulschool.me/sitemap.xml

@@ -8,3 +8,5 @@ build/
 frontend/.env
 backend/.env
 npm-debug.log*
+
+.vercel
